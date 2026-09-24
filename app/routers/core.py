@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.config import get_settings
 from app.models.schemas import ProcessResult
-from app.services import osm_index, processing, roadworks_nl, waterpoints_nl
+from app.services import osm_index, processing, roadworks_nl, waterpoints_nl, weather_service
 from app.services.gpx_service import GpxError
 from app.web import templates
 
@@ -48,6 +48,46 @@ def parse_ride_date(value: str | None) -> date | None:
         ) from exc
 
 
+def parse_weather(
+    enabled: bool, departure: str | None, speed_kmh: float | None
+) -> weather_service.WeatherRequest | None:
+    """Valideer vertrektijd en snelheid voor de regencontrole."""
+    if not enabled:
+        return None
+    zone = weather_service.tz()
+    now = datetime.now(zone)
+    if departure:
+        try:
+            moment = datetime.fromisoformat(departure)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="Ongeldige vertrektijd, gebruik JJJJ-MM-DDTUU:MM"
+            ) from exc
+        moment = moment.replace(tzinfo=zone) if moment.tzinfo is None else moment.astimezone(zone)
+    else:
+        moment = now
+    speed = speed_kmh or settings.default_speed_kmh
+    if not 5 <= speed <= 60:
+        raise HTTPException(status_code=400, detail="Kies een snelheid tussen 5 en 60 km/u")
+    if moment < now - timedelta(hours=1):
+        raise HTTPException(status_code=400, detail="De vertrektijd ligt in het verleden")
+    if moment > now + timedelta(days=settings.weather_max_days):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Een weersverwachting is maximaal {settings.weather_max_days} dagen vooruit beschikbaar",
+        )
+    return weather_service.WeatherRequest(departure=moment, speed_kmh=float(speed))
+
+
+def weather_context() -> dict[str, object]:
+    """Template-variabelen voor de optie "Controleer op regen"."""
+    return {
+        "weather_enabled": settings.weather_enabled,
+        "default_speed_kmh": settings.default_speed_kmh,
+        "weather_max_days": settings.weather_max_days,
+    }
+
+
 def legality_context() -> dict[str, object]:
     """Template-variabelen voor de optie "Controleer op verboden paden"."""
     return {
@@ -64,11 +104,12 @@ def run_processing(
     check_roadworks: bool = False,
     ride_date: date | None = None,
     check_legality: bool = False,
+    weather: weather_service.WeatherRequest | None = None,
 ) -> ProcessResult:
     """Voer de waterpuntenverwerking uit en vertaal fouten naar HTTP-antwoorden."""
     try:
         return processing.process_gpx(
-            raw, filename, radius_m, source, check_roadworks, ride_date, check_legality
+            raw, filename, radius_m, source, check_roadworks, ride_date, check_legality, weather
         )
     except GpxError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -93,6 +134,7 @@ async def index(request: Request) -> HTMLResponse:
             "gap_warning_km": settings.gap_warning_km,
             "roadworks_enabled": settings.roadworks_enabled,
             **legality_context(),
+            **weather_context(),
             "today": date.today().isoformat(),
             "strava_enabled": settings.strava_enabled,
             "strava_visible": settings.strava_feature_enabled,
@@ -113,6 +155,7 @@ async def health() -> JSONResponse:
             "nl_cache_age_seconds": None if age is None else round(age),
             "roadworks_enabled": settings.roadworks_enabled,
             "roadworks_cache_age_seconds": None if rw_age is None else round(rw_age),
+            "weather_enabled": settings.weather_enabled,
             "legality_enabled": settings.legality_enabled,
             "osm_map_available": osm["available"] if osm else None,
             "osm_map_age_days": osm["age_days"] if osm else None,
@@ -131,9 +174,13 @@ async def process(
     roadworks: bool = Form(default=False),
     ride_date: str = Form(default=None),
     legality: bool = Form(default=False),
+    weather: bool = Form(default=False),
+    departure: str = Form(default=None),
+    speed_kmh: float = Form(default=None),
 ) -> ProcessResult:
     radius_m = validate_options(radius, source)
     day = parse_ride_date(ride_date)
+    weather_request = parse_weather(weather, departure, speed_kmh)
 
     raw = await file.read()
     if not raw:
@@ -144,7 +191,8 @@ async def process(
             detail=f"Bestand is groter dan {settings.max_upload_mb} MB",
         )
     return run_processing(
-        raw, file.filename or "route.gpx", radius_m, source, roadworks, day, legality
+        raw, file.filename or "route.gpx", radius_m, source, roadworks, day, legality,
+        weather_request,
     )
 
 

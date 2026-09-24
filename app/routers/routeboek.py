@@ -11,7 +11,14 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.models.schemas import RouteboekProcessedRoute, RouteboekRouteInfo
-from app.routers.core import legality_context, parse_ride_date, run_processing, validate_options
+from app.routers.core import (
+    legality_context,
+    parse_ride_date,
+    parse_weather,
+    run_processing,
+    validate_options,
+    weather_context,
+)
 from app.services import processing, routeboek_service
 from app.services.routeboek_service import RouteboekError
 from app.web import templates
@@ -41,6 +48,7 @@ async def routeboek_page(request: Request) -> HTMLResponse:
             "strava_visible": settings.strava_feature_enabled,
             "roadworks_enabled": settings.roadworks_enabled,
             **legality_context(),
+            **weather_context(),
             "today": date.today().isoformat(),
             "club_slug": settings.routeboek_club_slug,
             "active": "routeboek",
@@ -63,6 +71,9 @@ class RouteboekProcessRequest(BaseModel):
     roadworks: bool = False
     ride_date: str | None = None
     legality: bool = False
+    weather: bool = False
+    departure: str | None = None
+    speed_kmh: float | None = None
 
 
 @router.post("/api/routeboek/process", response_model=list[RouteboekProcessedRoute])
@@ -72,6 +83,7 @@ def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedR
         raise HTTPException(status_code=400, detail="Selecteer minimaal één route")
     radius_m = validate_options(payload.radius, payload.source)
     day = parse_ride_date(payload.ride_date)
+    weather_request = parse_weather(payload.weather, payload.departure, payload.speed_kmh)
 
     known = {route.id: route for route in routeboek_service.list_routes()}
     results: list[RouteboekProcessedRoute] = []
@@ -97,6 +109,7 @@ def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedR
                 payload.roadworks,
                 day,
                 payload.legality,
+                weather_request,
             )
             result.filename = processing.safe_filename(name, "_waterpunten")
             results.append(

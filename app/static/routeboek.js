@@ -141,6 +141,7 @@
       });
 
       Legality.draw(r, layers);
+      Weather.draw(r, layers);
       const lg = Legality.summary(r);
 
       li.innerHTML =
@@ -156,6 +157,7 @@
           : "") +
         (r.legality_error ? `<small class="warn-text">${esc(r.legality_error)}</small>` : "") +
         (r.stats.warning ? `<small class="warn-text">${esc(r.stats.warning)}</small>` : "") +
+        Weather.panel(r) +
         `<span class="dl">` +
         `<a href="/api/download/${item.original_job_id}?name=${encodeURIComponent(item.original_filename)}" download>origineel</a>` +
         `<a class="primary" href="/api/download/${r.job_id}?name=${encodeURIComponent(r.filename)}" download>⬇ ${esc(r.filename)}</a>` +
@@ -168,6 +170,8 @@
     }
     el("results").hidden = false;
   }
+
+  Weather.init();
 
   // Datumkiezer alleen tonen als de controle is aangevinkt.
   const roadworksBox = el("roadworks");
@@ -202,6 +206,7 @@
               ? el("ride_date").value
               : null,
           legality: Boolean(el("legality") && el("legality").checked),
+          ...Weather.params(),
         }),
       });
       renderResults(items);

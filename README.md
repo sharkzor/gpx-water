@@ -76,6 +76,7 @@ Drie pagina's:
 - keuze zoekradius: 100 / 250 / 500 / 750 / 1000 meter (standaard 250)
 - keuze databron (automatisch / NL / OSM)
 - optie "Controleer op wegwerkzaamheden" met datumkiezer (standaard vandaag)
+- optie "Controleer op regen" met vertrektijd en snelheid (standaard 30 km/u)
 - startknop
 - na verwerking: interactieve Leaflet-kaart met route en waterpunten,
   analysegegevens en een downloadknop
@@ -88,6 +89,7 @@ Drie pagina's:
 - checkbox-selectie (één of meerdere routes, ook "alles aan/uit")
 - keuze zoekradius en databron
 - optie "Controleer op wegwerkzaamheden" met datumkiezer (standaard vandaag)
+- optie "Controleer op regen" met vertrektijd en snelheid (standaard 30 km/u)
 - knop **Maak waterpunten GPX**
 - per route het resultaat met twee downloads: het origineel
   (`Routenaam.gpx`) en de verrijkte versie (`Routenaam_waterpunten.gpx`),
@@ -107,7 +109,10 @@ Drie pagina's:
 Er is geen officiële routeboek.cc-API: de routelijst wordt gelezen uit de
 HTML van de clubpagina (kort gecached, standaard 15 minuten) en de GPX wordt
 per geselecteerde route rechtstreeks gedownload op het moment dat je op
-"Maak waterpunten GPX" klikt. Er wordt bewust **niet** periodiek alle media
+"Maak waterpunten GPX" klikt. Ontbreekt het GPX-bestand op routeboek.cc
+(gemeten: 1 van de 166 Stampers-routes geeft een 404), dan wordt de route
+opgebouwd uit de kaartcoördinaten op de detailpagina — zonder hoogtegegevens,
+afstand wijkt ~0,1% af. Er wordt bewust **niet** periodiek alle media
 lokaal gesynchroniseerd: dat zou onnodig veel downloads en belasting op
 routeboek.cc geven, terwijl de meeste bezoekers maar een handjevol routes
 verwerken. Zet `ROUTEBOEK_ENABLED=false` om deze pagina helemaal uit te
@@ -516,6 +521,65 @@ dan ook geen kaart gedownload.
 - `highway=path` zonder verdere tags wordt bewust niet gemeld; dat is in
   Nederland te dubbelzinnig.
 
+## Regen onderweg controleren
+
+Vink **Controleer op regen** aan, kies een vertrektijd en je gemiddelde
+snelheid (standaard 30 km/u, instelbaar van 5 tot 60 km/u, standaard via
+`DEFAULT_SPEED_KMH`). De app berekent voor elke kilometer hoe laat je daar
+bent en welke neerslag er op dat moment op die plek verwacht wordt.
+
+### Bronnen
+
+| Periode na nu | Bron | Resolutie |
+|---|---|---|
+| 0 – 2 uur (alleen NL) | Buienradar-radarverwachting (`gpsgadget.buienradar.nl/data/raintext`) | 5 min |
+| tot ~2,5 dag | KNMI Harmonie-model, via Open-Meteo (`models=knmi_seamless`) | 15 min, ~2,5 km |
+| verder, of buiten West-Europa | ECMWF (automatische terugval van Open-Meteo) | grover, minder betrouwbaar |
+
+Het KNMI Data Platform zelf vereist een API-sleutel; Open-Meteo levert
+hetzelfde KNMI-model zonder sleutel. Beide bronnen zijn gratis voor
+niet-commercieel gebruik. Een route van 100 km kost één Open-Meteo-verzoek
+(alle meetpunten in één keer, ~0,3 s) plus, bij direct vertrek, enkele
+Buienradar-verzoeken. Bij tijdelijke drukte (HTTP 429/503) wordt het
+verzoek tot twee keer herhaald.
+
+### Uitkomst
+
+- samenvatting: **droog verwacht** of het aantal natte stukken;
+- vertrek- en aankomsttijd, en de hoogste kans op neerslag onderweg;
+- een tijdlijnbalk van start tot finish (grijs = droog, lichtblauw = licht,
+  blauw = matig, donkerblauw = zwaar; hover voor km, tijd en mm/u);
+- natte stukken als blauwe band op de kaart, met km, tijdstip, intensiteit
+  en bron;
+- in de GPX een waypoint `🌧️ Regen - 42 km` aan het begin van elk nat stuk
+  (type `Weather`), met tijdstip, intensiteit en kans in de omschrijving.
+
+Een stuk telt als nat vanaf 0,1 mm/u (`WEATHER_RAIN_THRESHOLD_MM_H`); natte
+kilometers die minder dan 2 km uit elkaar liggen worden één stuk.
+Intensiteit: < 1 mm/u licht, 1–4 mm/u matig, > 4 mm/u zwaar.
+
+**Mogelijk regen.** Soms rekent het model regen terwijl de kans op neerslag
+voor dat uur klein is — vooral bij ECMWF een paar dagen vooruit (gemeten:
+"matige regen 2,4 mm/u" bij 12% kans). Zo'n stuk (kans onder
+`WEATHER_UNCERTAIN_PROBABILITY`, standaard 30%) wordt getoond als
+**mogelijk regen**: gestippeld op de kaart, `🌦️ Mogelijk regen - 42 km` in de
+GPX, en de samenvatting wordt "waarschijnlijk droog" als er alleen zulke
+stukken zijn. Radarwaarnemingen zijn nooit onzeker.
+
+### Beperkingen
+
+- Constante snelheid: pauzes, wind en hoogteverschil worden niet
+  meegerekend. Plan je een koffiestop, reken dan met een iets lagere
+  gemiddelde snelheid.
+- Een weersverwachting verandert: de waypoints in de GPX gelden voor de
+  verwachting op het moment van genereren. Controleer vlak voor vertrek
+  opnieuw.
+- Buien zijn lokaal; op modelschaal (2,5 km, 15 min) kan een bui net naast
+  of net anders vallen dan voorspeld.
+- Maximaal `WEATHER_MAX_DAYS` (7) dagen vooruit.
+
+---
+
 ## Wahoo ELEMNT ROAM 3
 
 De gegenereerde waypoints zijn standaard GPX 1.1 `<wpt>`-elementen op
@@ -589,6 +653,18 @@ Tip: gebruikt jouw firmware liever een ander symbool of geen emoji, pas dan
 | `SECRET_KEY` | – | Sleutel voor cookies en tokenversleuteling (leeg = auto) |
 | `COOKIE_SECURE` | `false` | Zet op `true` achter HTTPS |
 | `SESSION_TTL_SECONDS` | `2592000` | Levensduur van een sessie (30 dagen) |
+| `WEATHER_ENABLED` | `true` | Regencontrole aan/uit |
+| `DEFAULT_SPEED_KMH` | `30` | Voorgestelde gemiddelde snelheid |
+| `WEATHER_RAIN_THRESHOLD_MM_H` | `0.1` | Vanaf deze intensiteit telt een kilometer als nat |
+| `WEATHER_MAX_DAYS` | `7` | Hoe ver vooruit een vertrektijd mag liggen |
+| `WEATHER_UNCERTAIN_PROBABILITY` | `30` | Regen met een lagere kans (%) heet "mogelijk regen" |
+| `WEATHER_PREFIX_UNCERTAIN` | `🌦️ Mogelijk regen` | Waypointnaam voor onzekere natte stukken |
+| `WEATHER_MODEL` | `knmi_seamless` | Open-Meteo-model |
+| `WEATHER_API_URL` | Open-Meteo forecast | Bron modelverwachting |
+| `WEATHER_RADAR_URL` | Buienradar raintext | Bron radarverwachting |
+| `WEATHER_TIMEZONE` | `Europe/Amsterdam` | Tijdzone van de ingevoerde vertrektijd |
+| `WEATHER_PREFIX` | `🌧️ Regen` | Waypointnaam voor natte stukken |
+| `WEATHER_SYM` | `Danger Area` | GPX `<sym>` voor natte stukken |
 | `ROUTEBOEK_ENABLED` | `true` | Pagina "Routeboek routes" aan/uit |
 | `ROUTEBOEK_BASE_URL` | `https://routeboek.cc` | Basis-URL van de bronsite |
 | `ROUTEBOEK_CLUB_SLUG` | `stampers` | Clubnaam in de URL (`routeboek.cc/club/<slug>`) |
@@ -603,7 +679,7 @@ Zie `.env.example`. Een `.env` in de projectmap wordt automatisch geladen.
 | Endpoint | Methode | Omschrijving |
 |---|---|---|
 | `/` | GET | Webinterface |
-| `/api/process` | POST | multipart: `file`, `radius`, `source`, `roadworks`, `ride_date` → JSON met route, waterpunten en statistiek |
+| `/api/process` | POST | multipart: `file`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
 | `/api/download/{job_id}` | GET | Gegenereerde GPX |
 | `/api/cache/refresh` | POST | Forceer verversen NL-dataset |
 | `/api/roadworks/refresh` | POST | Forceer verversen NDW-wegwerkzaamheden |
@@ -659,9 +735,10 @@ app/
     processing.py          orkestratie upload → resultaat
     strava_service.py      Strava OAuth2 en API-aanroepen
     routeboek_service.py   routeboek.cc scrapen (routelijst + GPX-download)
+    weather_service.py     regencontrole: KNMI Harmonie (Open-Meteo) + Buienradar
     token_store.py         versleutelde tokenopslag
-  templates/{index.html,strava.html,routeboek.html}
-  static/{style.css,app.js,strava.js,routeboek.js,legality.js}
+  templates/{index.html,strava.html,routeboek.html,_weather_option.html}
+  static/{style.css,app.js,strava.js,routeboek.js,legality.js,weather.js}
 tests/
 Dockerfile, entrypoint.sh, docker-compose.yml, requirements.txt
 ```

@@ -12,8 +12,10 @@ from app.config import get_settings
 from app.models.schemas import (
     LegalitySegmentOut,
     ProcessResult,
+    RainSegmentOut,
     RoadWorkOut,
     WaterPointOut,
+    WeatherSampleOut,
 )
 from app.services import (
     gpx_service,
@@ -23,6 +25,7 @@ from app.services import (
     roadworks_nl,
     route_service,
     waterpoints_nl,
+    weather_service,
 )
 from app.services.geo import bounding_box, in_netherlands, nl_share
 
@@ -134,6 +137,18 @@ def _collect_legality(
     return report.segments, None
 
 
+def _collect_weather(
+    coords: list[tuple[float, float]],
+    request: weather_service.WeatherRequest,
+) -> tuple[weather_service.WeatherReport | None, str | None]:
+    """Controleer de route op regen; een storing blokkeert de rest nooit."""
+    try:
+        return weather_service.check_route(coords, request), None
+    except Exception as exc:
+        logger.warning("Regencontrole mislukt: %s", exc)
+        return None, f"De regencontrole is mislukt: {exc}"
+
+
 def process_gpx(
     raw: bytes,
     filename: str,
@@ -142,6 +157,7 @@ def process_gpx(
     check_roadworks: bool = False,
     ride_date: date | None = None,
     check_legality: bool = False,
+    weather: weather_service.WeatherRequest | None = None,
 ) -> ProcessResult:
     """Verwerk een GPX-upload en schrijf de nieuwe GPX naar de tijdelijke map."""
     settings = get_settings()
@@ -185,11 +201,20 @@ def process_gpx(
     elif check_legality:
         legality_error = "Controle op verboden paden is uitgeschakeld."
 
+    report: weather_service.WeatherReport | None = None
+    weather_error: str | None = None
+    if weather is not None and settings.weather_enabled:
+        report, weather_error = _collect_weather(coords, weather)
+    elif weather is not None:
+        weather_error = "Regencontrole is uitgeschakeld."
+
     has_elevation = any(p.ele is not None for p in route_points)
     stats = route_service.build_stats(index, matched, has_elevation)
 
     job_id = uuid.uuid4().hex
-    xml = gpx_service.build_output_gpx(gpx, matched, road_works, segments)
+    xml = gpx_service.build_output_gpx(
+        gpx, matched, road_works, segments, report.segments if report else ()
+    )
     output_path(job_id).write_text(xml, encoding="utf-8")
     cleanup_jobs()
 
@@ -251,7 +276,61 @@ def process_gpx(
             )
             for seg in segments
         ],
+        **_weather_fields(weather, report, weather_error),
     )
+
+
+def _iso(moment) -> str:
+    return moment.isoformat(timespec="minutes")
+
+
+def _weather_fields(
+    request: weather_service.WeatherRequest | None,
+    report: weather_service.WeatherReport | None,
+    error: str | None,
+) -> dict:
+    if request is None:
+        return {}
+    fields: dict = {
+        "weather_checked": True,
+        "weather_error": error,
+        "weather_departure": _iso(request.departure),
+        "weather_speed_kmh": request.speed_kmh,
+    }
+    if report is None:
+        return fields
+    fields.update(
+        weather_arrival=_iso(report.arrival),
+        weather_issued=_iso(report.issued),
+        weather_max_probability=report.max_probability,
+        weather_note=report.note,
+        weather_segments=[
+            RainSegmentOut(
+                start_km=seg.start_km,
+                end_km=seg.end_km,
+                start_time=_iso(seg.start_time),
+                end_time=_iso(seg.end_time),
+                max_mm_h=seg.max_mm_h,
+                label=seg.label,
+                sources=seg.sources,
+                max_probability=seg.max_probability,
+                uncertain=seg.uncertain,
+                coordinates=[[lat, lon] for lat, lon in seg.coordinates],
+            )
+            for seg in report.segments
+        ],
+        weather_samples=[
+            WeatherSampleOut(
+                km=s.km,
+                time=_iso(s.eta),
+                mm_h=s.mm_h,
+                probability=s.probability,
+                source=s.source,
+            )
+            for s in report.samples
+        ],
+    )
+    return fields
 
 
 def _output_filename(filename: str) -> str:

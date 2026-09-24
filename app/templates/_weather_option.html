@@ -1,0 +1,26 @@
+{% if weather_enabled %}
+<fieldset class="option-group">
+  <label class="check">
+    <input type="checkbox" id="weather" name="weather">
+    Controleer op regen (KNMI / Buienradar)
+  </label>
+  <div id="weather-wrap" hidden>
+    <div class="field-row">
+      <div>
+        <label for="departure">Vertrektijd</label>
+        <input type="datetime-local" id="departure" name="departure">
+      </div>
+      <div>
+        <label for="speed_kmh">Snelheid (km/u)</label>
+        <input type="number" id="speed_kmh" name="speed_kmh"
+               value="{{ '%g' % default_speed_kmh }}" min="5" max="60" step="0.5">
+      </div>
+    </div>
+    <p class="hint">
+      Per kilometer wordt berekend hoe laat je er bent en of het dan regent.
+      Eerste 2 uur: Buienradar-radar; daarna het KNMI Harmonie-model (tot
+      ~2,5 dag vooruit), verder vooruit ECMWF. Maximaal {{ weather_max_days }} dagen.
+    </p>
+  </div>
+</fieldset>
+{% endif %}

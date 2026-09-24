@@ -14,6 +14,7 @@ from app.models.schemas import RoadWork, RoutePoint, WaterPoint
 
 if TYPE_CHECKING:
     from app.services.legality import Segment
+    from app.services.weather_service import RainSegment
 
 logger = logging.getLogger(__name__)
 
@@ -152,11 +153,29 @@ def _describe_segment(segment: "Segment") -> str:
     return " | ".join(parts)
 
 
+def _describe_rain(segment: "RainSegment") -> str:
+    def mm(value: float) -> str:
+        return f"{value:.1f}".replace(".", ",")
+
+    parts = [f"{segment.label} tot {mm(segment.max_mm_h)} mm/u"]
+    if segment.uncertain:
+        parts[0] += " (onzeker)"
+    parts.append(
+        f"km {segment.start_km:.0f} t/m {segment.end_km:.0f}, "
+        f"rond {segment.start_time:%H:%M}-{segment.end_time:%H:%M} ({segment.start_time:%d-%m})"
+    )
+    if segment.max_probability is not None:
+        parts.append(f"Kans op neerslag {segment.max_probability}%")
+    parts.append(f"Bron: {', '.join(segment.sources)}")
+    return " | ".join(parts)
+
+
 def build_output_gpx(
     original: gpxpy.gpx.GPX,
     water_points: Iterable[WaterPoint],
     road_works: Iterable[RoadWork] = (),
     segments: Iterable["Segment"] = (),
+    rain: Iterable["RainSegment"] = (),
 ) -> str:
     """Voeg drinkwater-, werkzaamheden- en verboden-pad-waypoints toe aan de GPX.
 
@@ -226,6 +245,22 @@ def build_output_gpx(
             type="Forbidden" if forbidden else "Caution",
         )
         point.comment = segment.label
+        gpx.waypoints.append(point)
+
+    for segment in rain:
+        name = settings.weather_prefix_uncertain if segment.uncertain else settings.weather_prefix
+        if settings.waypoint_with_km:
+            name = f"{name} - {segment.start_km:.0f} km"
+        lat, lon = segment.coordinates[0] if segment.coordinates else (0.0, 0.0)
+        point = gpxpy.gpx.GPXWaypoint(
+            latitude=round(lat, 6),
+            longitude=round(lon, 6),
+            name=name,
+            description=_describe_rain(segment),
+            symbol=settings.weather_sym,
+            type="Weather",
+        )
+        point.comment = f"{segment.label} rond {segment.start_time:%H:%M}"
         gpx.waypoints.append(point)
 
     xml = gpx.to_xml(version="1.1")

@@ -24,6 +24,8 @@ import threading
 import time
 from urllib.parse import urljoin
 
+import gpxpy
+import gpxpy.gpx
 import requests
 
 from app.config import get_settings
@@ -43,6 +45,8 @@ _DISTANCE_RE = re.compile(r'dataitem distance">.*?</span>([\d,.]+)\s*km', re.S)
 _ELEVATION_RE = re.compile(r'dataitem hoogte">.*?</span>(\d+)', re.S)
 _RATING_RE = re.compile(r'class="stars" style="width:\s*(\d+)px"')
 _GPX_LINK_RE = re.compile(r'<a href="([^"]+)"[^>]*id="[^"]*_lnkGPX"')
+_COORD_RE = re.compile(r"\{\s*lat:\s*(-?\d+(?:\.\d+)?),\s*lng:\s*(-?\d+(?:\.\d+)?)\s*\}")
+_TITLE_RE = re.compile(r"<title>\s*(.*?)\s*</title>", re.S)
 
 _lock = threading.Lock()
 _cache: list[RouteboekRouteInfo] = []
@@ -137,28 +141,74 @@ def list_routes(force_refresh: bool = False) -> list[RouteboekRouteInfo]:
     return list(routes)
 
 
+def _gpx_from_map(document: str, slug: str) -> bytes | None:
+    """Bouw een GPX uit de kaartcoördinaten op de detailpagina.
+
+    Terugval voor routes waarvan het GPX-bestand op routeboek.cc ontbreekt
+    (gemeten: 1 van de 166 Stampers-routes). Zonder hoogtegegevens.
+    """
+    points = [(float(lat), float(lon)) for lat, lon in _COORD_RE.findall(document)]
+    if len(points) < 2:
+        return None
+    title = _TITLE_RE.search(document)
+    name = html.unescape(title.group(1)).split(" - ")[-1].strip() if title else slug
+    gpx = gpxpy.gpx.GPX()
+    gpx.creator = "gpx-waterpoints (routeboek.cc-kaart)"
+    gpx.name = name
+    gpx.description = (
+        "Opgebouwd uit de kaart op routeboek.cc; het originele GPX-bestand "
+        "ontbreekt daar. Geen hoogtegegevens."
+    )
+    track = gpxpy.gpx.GPXTrack(name=name)
+    segment = gpxpy.gpx.GPXTrackSegment(
+        [gpxpy.gpx.GPXTrackPoint(lat, lon) for lat, lon in points]
+    )
+    track.segments.append(segment)
+    gpx.tracks.append(track)
+    logger.warning(
+        "GPX van '%s' ontbreekt op routeboek.cc; opgebouwd uit %d kaartpunten",
+        slug,
+        len(points),
+    )
+    return gpx.to_xml(version="1.1").encode("utf-8")
+
+
+def _download(url: str) -> bytes | None:
+    """Download een GPX; ``None`` als het bestand niet bestaat."""
+    settings = get_settings()
+    try:
+        response = requests.get(
+            url, timeout=_TIMEOUT, headers={"User-Agent": settings.user_agent}
+        )
+    except requests.RequestException as exc:
+        raise RouteboekError(f"GPX-download mislukt: {exc}") from exc
+    if response.status_code == 404:
+        return None
+    if response.status_code >= 400:
+        raise RouteboekError(f"GPX-download mislukt ({response.status_code})")
+    content = response.content
+    if b"<gpx" not in content[:2000].lower():
+        return None
+    return content
+
+
 def export_gpx(slug: str) -> bytes:
-    """Download de originele GPX van een route via de detailpagina."""
+    """Download de originele GPX van een route via de detailpagina.
+
+    Ontbreekt dat bestand, dan wordt de route opgebouwd uit de kaart op de
+    detailpagina.
+    """
     if not re.fullmatch(r"[a-z0-9-]+", slug or ""):
         raise RouteboekError(f"Ongeldige route-slug: {slug}")
     detail_url = f"{_club_url()}/route/{slug}"
     document = _get(detail_url)
     match = _GPX_LINK_RE.search(document)
-    if not match:
-        raise RouteboekError("Deze route heeft geen GPX-download op routeboek.cc.")
-    gpx_url = urljoin(detail_url, html.unescape(match.group(1)))
-
-    settings = get_settings()
-    try:
-        response = requests.get(
-            gpx_url, timeout=_TIMEOUT, headers={"User-Agent": settings.user_agent}
-        )
-    except requests.RequestException as exc:
-        raise RouteboekError(f"GPX-download mislukt: {exc}") from exc
-    if response.status_code >= 400:
-        raise RouteboekError(f"GPX-download mislukt ({response.status_code})")
-    content = response.content
-    if b"<gpx" not in content[:2000].lower():
-        raise RouteboekError("routeboek.cc gaf geen geldige GPX terug voor deze route.")
+    content = None
+    if match:
+        content = _download(urljoin(detail_url, html.unescape(match.group(1))))
+    if content is None:
+        content = _gpx_from_map(document, slug)
+    if content is None:
+        raise RouteboekError("Deze route heeft geen GPX en geen kaart op routeboek.cc.")
     logger.info("GPX van routeboek.cc-route '%s' opgehaald (%d bytes)", slug, len(content))
     return content

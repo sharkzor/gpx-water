@@ -85,6 +85,29 @@ class LegalitySegmentOut(BaseModel):
     coordinates: list[list[float]]
 
 
+class RainSegmentOut(BaseModel):
+    """Stuk route waar tijdens het passeren neerslag verwacht wordt."""
+
+    start_km: float
+    end_km: float
+    start_time: str  # ISO, lokale tijd
+    end_time: str
+    max_mm_h: float
+    label: str
+    sources: list[str]
+    max_probability: int | None = None
+    uncertain: bool = False
+    coordinates: list[list[float]]
+
+
+class WeatherSampleOut(BaseModel):
+    km: float
+    time: str  # ISO, lokale tijd
+    mm_h: float
+    probability: int | None = None
+    source: str
+
+
 class WaterPointOut(BaseModel):
     lat: float
     lon: float
@@ -126,6 +149,17 @@ class ProcessResult(BaseModel):
     legality_checked: bool = False
     legality_error: str | None = None
     legality_segments: list[LegalitySegmentOut] = []
+    # Alleen gevuld als er op regen is gecontroleerd
+    weather_checked: bool = False
+    weather_error: str | None = None
+    weather_departure: str | None = None
+    weather_arrival: str | None = None
+    weather_speed_kmh: float | None = None
+    weather_issued: str | None = None
+    weather_max_probability: int | None = None
+    weather_note: str | None = None
+    weather_segments: list[RainSegmentOut] = []
+    weather_samples: list[WeatherSampleOut] = []
 
 
 class StravaRouteInfo(BaseModel):

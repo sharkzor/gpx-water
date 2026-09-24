@@ -28,6 +28,8 @@
     iconAnchor: [11, 11],
   });
 
+  Weather.init();
+
   // Datumkiezer alleen tonen als de controle is aangevinkt.
   const roadworksBox = document.getElementById("roadworks");
   const dateWrap = document.getElementById("roadworks-date-wrap");
@@ -131,6 +133,19 @@
     if (wrap) wrap.hidden = !(data.legality_segments || []).length;
   }
 
+  function renderWeather(data) {
+    const label = document.getElementById("stat-wx-label");
+    const value = document.getElementById("stat-weather");
+    const box = document.getElementById("weather-result");
+    const text = Weather.summary(data);
+    if (label && value) {
+      label.hidden = value.hidden = text === null;
+      value.textContent = text || "";
+    }
+    if (box) box.innerHTML = Weather.panel(data);
+    Weather.draw(data, layers);
+  }
+
   function render(data) {
     layers.clearLayers();
 
@@ -177,6 +192,7 @@
     document.getElementById("list-wrap").hidden = data.water_points.length === 0;
     renderRoadWorks(data);
     renderLegality(data);
+    renderWeather(data);
     results.hidden = false;
   }
 
@@ -199,6 +215,7 @@
 
     const legalityBox = document.getElementById("legality");
     if (legalityBox && legalityBox.checked) body.append("legality", "true");
+    Weather.appendTo(body);
 
     submitBtn.disabled = true;
     setStatus(
@@ -217,6 +234,9 @@
       }
       if (payload.legality_checked && !payload.legality_error) {
         msg += ` Verboden paden: ${Legality.summary(payload)}.`;
+      }
+      if (payload.weather_checked && !payload.weather_error) {
+        msg += ` Regen: ${Weather.summary(payload)}.`;
       }
       setStatus(msg);
     } catch (err) {

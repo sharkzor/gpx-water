@@ -75,6 +75,8 @@
       </fieldset>
       {% endif %}
 
+      {% include "_weather_option.html" %}
+
       <button type="submit" id="submit">Verwerk route</button>
     </form>
     <p id="status" class="status"></p>
@@ -91,7 +93,10 @@
         <dd id="stat-roadworks" hidden>–</dd>
         <dt id="stat-lg-label" hidden>Verboden paden</dt>
         <dd id="stat-legality" hidden>–</dd>
+        <dt id="stat-wx-label" hidden>Regen onderweg</dt>
+        <dd id="stat-weather" hidden>–</dd>
       </dl>
+      <div id="weather-result"></div>
       <p id="warning" class="warning" hidden></p>
       <p id="roadworks-note" class="warning" hidden></p>
       <p id="legality-note" class="warning" hidden></p>
@@ -118,6 +123,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/legality.js?v={{ app_version }}"></script>
+<script src="/static/weather.js?v={{ app_version }}"></script>
 <script src="/static/app.js?v={{ app_version }}"></script>
 </body>
 </html>

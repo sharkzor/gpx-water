@@ -85,6 +85,8 @@
       </fieldset>
       {% endif %}
 
+      {% include "_weather_option.html" %}
+
       <label>Routes <span id="route-count" class="muted"></span></label>
       <input type="search" id="route-search" placeholder="Zoek op naam…" autocomplete="off">
       <div class="toolbar">
@@ -110,6 +112,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/legality.js?v={{ app_version }}"></script>
+<script src="/static/weather.js?v={{ app_version }}"></script>
 <script src="/static/strava.js?v={{ app_version }}"></script>
 </body>
 </html>

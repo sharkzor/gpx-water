@@ -34,6 +34,11 @@ services:
       OSM_MAX_AGE_DAYS: "${OSM_MAX_AGE_DAYS:-30}"
       OSM_MIN_FREE_MB: "${OSM_MIN_FREE_MB:-2800}"
       OSM_START_JITTER_SECONDS: "${OSM_START_JITTER_SECONDS:-1800}"
+      # Regencontrole: KNMI Harmonie (via Open-Meteo) + Buienradar-radar
+      WEATHER_ENABLED: "${WEATHER_ENABLED:-true}"
+      DEFAULT_SPEED_KMH: "${DEFAULT_SPEED_KMH:-30}"
+      WEATHER_RAIN_THRESHOLD_MM_H: "${WEATHER_RAIN_THRESHOLD_MM_H:-0.1}"
+      WEATHER_MAX_DAYS: "${WEATHER_MAX_DAYS:-7}"
       # Strava: auto (aan zodra credentials staan), true of false
       STRAVA_ENABLED: "${STRAVA_ENABLED:-auto}"
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"

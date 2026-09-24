@@ -109,6 +109,31 @@ class Settings:
         )
         self.legality_sym: str = os.getenv("LEGALITY_SYM", "Danger Area")
 
+        # Regencontrole: KNMI-model (via Open-Meteo) + Buienradar-radar
+        self.weather_enabled: bool = os.getenv(
+            "WEATHER_ENABLED", "true"
+        ).lower() in ("1", "true", "yes", "on")
+        self.weather_api_url: str = os.getenv(
+            "WEATHER_API_URL", "https://api.open-meteo.com/v1/forecast"
+        )
+        self.weather_model: str = os.getenv("WEATHER_MODEL", "knmi_seamless")
+        self.weather_radar_url: str = os.getenv(
+            "WEATHER_RADAR_URL", "https://gpsgadget.buienradar.nl/data/raintext"
+        )
+        self.weather_timezone: str = os.getenv("WEATHER_TIMEZONE", "Europe/Amsterdam")
+        self.default_speed_kmh: float = _float("DEFAULT_SPEED_KMH", 30.0)
+        # Vanaf deze intensiteit telt een stuk als "nat" (0,1 mm/u = motregen).
+        self.weather_rain_threshold_mm_h: float = _float("WEATHER_RAIN_THRESHOLD_MM_H", 0.1)
+        self.weather_max_days: int = _int("WEATHER_MAX_DAYS", 7)
+        # Model zegt regen maar de kans is lager dan dit: "mogelijk regen".
+        self.weather_uncertain_probability: int = _int("WEATHER_UNCERTAIN_PROBABILITY", 30)
+        self.weather_timeout: int = _int("WEATHER_TIMEOUT", 20)
+        self.weather_prefix: str = os.getenv("WEATHER_PREFIX", "\U0001f327\ufe0f Regen")
+        self.weather_prefix_uncertain: str = os.getenv(
+            "WEATHER_PREFIX_UNCERTAIN", "\U0001f326\ufe0f Mogelijk regen"
+        )
+        self.weather_sym: str = os.getenv("WEATHER_SYM", "Danger Area")
+
         # Caches (drinkwaterpunten.nl en NDW) op de achtergrond vers houden,
         # zodat een bezoeker nooit op een download hoeft te wachten.
         self.background_refresh: bool = os.getenv(

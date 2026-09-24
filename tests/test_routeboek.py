@@ -107,10 +107,33 @@ def test_export_gpx_haalt_download_link_van_detailpagina(monkeypatch, sample_gpx
     assert content.startswith(b"<?xml")
 
 
-def test_export_gpx_zonder_download_link_geeft_fout(monkeypatch) -> None:
+def test_export_gpx_zonder_download_link_en_kaart_geeft_fout(monkeypatch) -> None:
     monkeypatch.setattr(routeboek_service, "_get", lambda url: "<html>geen link</html>")
     with pytest.raises(RouteboekError):
         routeboek_service.export_gpx("onbekende-route")
+
+
+_MAP_HTML = _DETAIL_HTML + """
+<title>Routeboek.cc - Gravel: Huize Scherpenzeel  V2</title>
+<script>var path = [{ lat: 52.08755, lng: 5.04676 }, { lat: 52.08836, lng: 5.04611 },
+{ lat: 52.09000, lng: 5.05000 }];</script>
+"""
+
+
+def test_ontbrekend_gpx_bestand_valt_terug_op_kaart(monkeypatch) -> None:
+    """Gemeten op routeboek.cc: de GPX-link van één route geeft 404."""
+    monkeypatch.setattr(routeboek_service, "_get", lambda url: _MAP_HTML)
+
+    class _NotFound:
+        status_code = 404
+        content = b"not found"
+
+    monkeypatch.setattr(routeboek_service.requests, "get", lambda *a, **k: _NotFound())
+    content = routeboek_service.export_gpx("gravel-huize-scherpenzeel-v2")
+    assert b"<gpx" in content
+    assert content.count(b"<trkpt") == 3
+    assert b"Gravel: Huize Scherpenzeel" in content
+    assert b"ontbreekt" in content
 
 
 def test_pagina_toont_zoekveld_en_navigatie(client: TestClient) -> None:

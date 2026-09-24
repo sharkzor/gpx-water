@@ -20,8 +20,10 @@ from app.models.schemas import (
 from app.routers.core import (
     legality_context,
     parse_ride_date,
+    parse_weather,
     run_processing,
     validate_options,
+    weather_context,
 )
 from app.services import processing, strava_service, token_store
 from app.services.strava_service import StravaAuthError, StravaError
@@ -94,6 +96,7 @@ async def strava_page(request: Request) -> HTMLResponse:
             "strava_visible": True,
             "roadworks_enabled": settings.roadworks_enabled,
             **legality_context(),
+            **weather_context(),
             "today": date.today().isoformat(),
             "oauth_available": settings.strava_oauth_enabled,
             "routeboek_visible": settings.routeboek_enabled,
@@ -203,6 +206,9 @@ class StravaProcessRequest(BaseModel):
     roadworks: bool = False
     ride_date: str | None = None
     legality: bool = False
+    weather: bool = False
+    departure: str | None = None
+    speed_kmh: float | None = None
 
 
 @router.post("/api/strava/process", response_model=list[StravaProcessedRoute])
@@ -215,6 +221,7 @@ def process_routes(
         raise HTTPException(status_code=400, detail="Selecteer minimaal één route")
     radius_m = validate_options(payload.radius, payload.source)
     day = parse_ride_date(payload.ride_date)
+    weather_request = parse_weather(payload.weather, payload.departure, payload.speed_kmh)
 
     known = {route.id: route for route in strava_service.list_routes(session)}
     results: list[StravaProcessedRoute] = []
@@ -233,6 +240,7 @@ def process_routes(
                 payload.roadworks,
                 day,
                 payload.legality,
+                weather_request,
             )
             result.filename = processing.safe_filename(name, "_waterpunten")
             results.append(
