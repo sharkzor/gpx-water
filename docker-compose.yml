@@ -1,0 +1,59 @@
+services:
+  gpx-waterpoints:
+    build: .
+    image: gpx-waterpoints:latest
+    container_name: gpx-drinkwaterpunten
+    restart: unless-stopped
+    ports:
+      - "8087:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      PORT: 8080
+      LOG_LEVEL: INFO
+      DATA_DIR: /app/data
+      DEFAULT_RADIUS_M: 250
+      DEDUPE_DISTANCE_M: 50
+      NL_CACHE_TTL_SECONDS: 86400
+      NL_SHARE_THRESHOLD: 0.8
+      GAP_WARNING_KM: 40
+      OVERPASS_URL: "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter"
+      WAYPOINT_PREFIX: "💧 Water"
+      WAYPOINT_WITH_KM: "true"
+      WAYPOINT_SYM: "Water Source"
+      # Controle op wegwerkzaamheden (NDW/Melvin, alleen Nederland)
+      ROADWORKS_ENABLED: "${ROADWORKS_ENABLED:-true}"
+      ROADWORKS_LINE_TOLERANCE_M: "${ROADWORKS_LINE_TOLERANCE_M:-25}"
+      ROADWORKS_RADIUS_M: "${ROADWORKS_RADIUS_M:-100}"
+      ROADWORKS_CACHE_TTL_SECONDS: "${ROADWORKS_CACHE_TTL_SECONDS:-86400}"
+      ROADWORKS_MERGE_GAP_M: "${ROADWORKS_MERGE_GAP_M:-250}"
+      BACKGROUND_REFRESH: "${BACKGROUND_REFRESH:-true}"
+      # Controle op verboden paden: eigen OSM-wegenkaart (~450 MB in ./data/osm,
+      # maandelijks opnieuw opgebouwd; piek ~2,5 GB geheugen tijdens het bouwen)
+      LEGALITY_ENABLED: "${LEGALITY_ENABLED:-true}"
+      OSM_MAX_AGE_DAYS: "${OSM_MAX_AGE_DAYS:-30}"
+      OSM_MIN_FREE_MB: "${OSM_MIN_FREE_MB:-2800}"
+      OSM_START_JITTER_SECONDS: "${OSM_START_JITTER_SECONDS:-1800}"
+      # Strava: auto (aan zodra credentials staan), true of false
+      STRAVA_ENABLED: "${STRAVA_ENABLED:-auto}"
+      STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
+      STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+      STRAVA_REDIRECT_URI: "${STRAVA_REDIRECT_URI:-}"
+      STRAVA_SCOPE: "${STRAVA_SCOPE:-read,read_all}"
+      # Alternatief voor koppelen via de knop: bestaand token hergebruiken
+      STRAVA_ACCESS_TOKEN: "${STRAVA_ACCESS_TOKEN:-}"
+      STRAVA_REFRESH_TOKEN: "${STRAVA_REFRESH_TOKEN:-}"
+      # Sleutel voor sessiecookies en tokenversleuteling.
+      # Leeg laten = automatisch gegenereerd in ./data/secret.key
+      SECRET_KEY: "${SECRET_KEY:-}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # Routeboek.cc: routes van een clubpagina scrapen (geen officiële API)
+      ROUTEBOEK_ENABLED: "${ROUTEBOEK_ENABLED:-true}"
+      ROUTEBOEK_BASE_URL: "${ROUTEBOEK_BASE_URL:-https://routeboek.cc}"
+      ROUTEBOEK_CLUB_SLUG: "${ROUTEBOEK_CLUB_SLUG:-stampers}"
+      ROUTEBOEK_CACHE_TTL_SECONDS: "${ROUTEBOEK_CACHE_TTL_SECONDS:-900}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

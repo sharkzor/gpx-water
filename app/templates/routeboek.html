@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Routeboek routes – GPX Drinkwaterpunten</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+</head>
+<body>
+<header>
+  <div>
+    <h1>💧 Routeboek routes</h1>
+    <p>Kies een route van routeboek.cc/club/{{ club_slug }} en maak er een GPX met drinkwaterpunten van.</p>
+  </div>
+  <nav>
+    <a href="/">GPX upload</a>
+    {% if strava_visible %}<a href="/strava">Strava routes</a>{% endif %}
+    <a href="/routeboek" class="active">Routeboek routes</a>
+  </nav>
+</header>
+
+<main>
+  <section class="panel">
+    <div id="route-box">
+      <label for="radius">Zoekradius</label>
+      <select id="radius">
+        {% for r in radii %}
+        <option value="{{ r }}" {% if r == default_radius %}selected{% endif %}>{{ r }} meter</option>
+        {% endfor %}
+      </select>
+
+      <label for="source">Databron</label>
+      <select id="source">
+        <option value="auto" selected>Automatisch (NL &gt; 80% → drinkwaterpunten.nl)</option>
+        <option value="nl">drinkwaterpunten.nl</option>
+        <option value="osm">OpenStreetMap</option>
+      </select>
+
+      {% if roadworks_enabled %}
+      <fieldset class="option-group">
+        <label class="check">
+          <input type="checkbox" id="roadworks">
+          Controleer op wegwerkzaamheden (alleen Nederland)
+        </label>
+        <div id="roadworks-date-wrap" hidden>
+          <label for="ride_date">Datum van de rit</label>
+          <input type="date" id="ride_date" value="{{ today }}">
+          <p class="hint">
+            Bron: NDW/Melvin. Gemeenten melden hier hun werkzaamheden;
+            de dekking is niet volledig.
+          </p>
+        </div>
+      </fieldset>
+      {% endif %}
+
+      {% if legality_enabled %}
+      <fieldset class="option-group">
+        <label class="check">
+          <input type="checkbox" id="legality">
+          Controleer op verboden paden (alleen Nederland)
+        </label>
+        <p class="hint">
+          Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
+          niet (zonder meer) mag. Bron: OpenStreetMap.
+          {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
+          na de eerste start een kwartier duren.</strong>{% endif %}
+        </p>
+      </fieldset>
+      {% endif %}
+
+      <label>Routes <span id="route-count" class="muted"></span></label>
+      <input type="search" id="route-search" placeholder="Zoek op naam…" autocomplete="off">
+      <div class="toolbar">
+        <button type="button" id="refresh-routes" class="secondary">Vernieuw lijst</button>
+        <button type="button" id="select-all" class="secondary">Alles aan/uit</button>
+      </div>
+      <ul id="routes" class="routes"></ul>
+
+      <button type="button" id="process-btn">Maak waterpunten GPX</button>
+      <p id="status" class="status"></p>
+    </div>
+
+    <div id="results" hidden>
+      <h2>Resultaten</h2>
+      <ul id="result-list" class="results"></ul>
+    </div>
+  </section>
+
+  <section class="map-wrap">
+    <div id="map"></div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/legality.js?v={{ app_version }}"></script>
+<script src="/static/routeboek.js?v={{ app_version }}"></script>
+</body>
+</html>

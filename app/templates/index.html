@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPX Drinkwaterpunten</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+</head>
+<body>
+<header>
+  <div>
+    <h1>💧 GPX Drinkwaterpunten</h1>
+    <p>Upload een fietsroute, krijg een GPX met drinkwater-waypoints voor je Wahoo ELEMNT ROAM.</p>
+  </div>
+  {% if strava_visible or routeboek_visible %}
+  <nav>
+    <a href="/" class="active">GPX upload</a>
+    {% if strava_visible %}<a href="/strava">Strava routes</a>{% endif %}
+    {% if routeboek_visible %}<a href="/routeboek">Routeboek routes</a>{% endif %}
+  </nav>
+  {% endif %}
+</header>
+
+<main>
+  <section class="panel">
+    <form id="form">
+      <label for="file">GPX-bestand</label>
+      <input type="file" id="file" name="file" accept=".gpx,application/gpx+xml" required>
+
+      <label for="radius">Zoekradius</label>
+      <select id="radius" name="radius">
+        {% for r in radii %}
+        <option value="{{ r }}" {% if r == default_radius %}selected{% endif %}>{{ r }} meter</option>
+        {% endfor %}
+      </select>
+
+      <label for="source">Databron</label>
+      <select id="source" name="source">
+        <option value="auto" selected>Automatisch (NL &gt; 80% → drinkwaterpunten.nl)</option>
+        <option value="nl">drinkwaterpunten.nl</option>
+        <option value="osm">OpenStreetMap</option>
+      </select>
+
+      {% if roadworks_enabled %}
+      <fieldset class="option-group">
+        <label class="check">
+          <input type="checkbox" id="roadworks" name="roadworks">
+          Controleer op wegwerkzaamheden (alleen Nederland)
+        </label>
+        <div id="roadworks-date-wrap" hidden>
+          <label for="ride_date">Datum van de rit</label>
+          <input type="date" id="ride_date" name="ride_date" value="{{ today }}">
+          <p class="hint">
+            Bron: NDW/Melvin. Gemeenten melden hier hun werkzaamheden;
+            de dekking is niet volledig.
+          </p>
+        </div>
+      </fieldset>
+      {% endif %}
+
+      {% if legality_enabled %}
+      <fieldset class="option-group">
+        <label class="check">
+          <input type="checkbox" id="legality" name="legality">
+          Controleer op verboden paden (alleen Nederland)
+        </label>
+        <p class="hint">
+          Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
+          niet (zonder meer) mag. Bron: OpenStreetMap.
+          {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
+          na de eerste start een kwartier duren.</strong>{% endif %}
+        </p>
+      </fieldset>
+      {% endif %}
+
+      <button type="submit" id="submit">Verwerk route</button>
+    </form>
+    <p id="status" class="status"></p>
+
+    <div id="results" hidden>
+      <h2>Analyse</h2>
+      <dl class="stats">
+        <dt>Totale routeafstand</dt><dd id="stat-distance">–</dd>
+        <dt>Aantal waterpunten</dt><dd id="stat-count">–</dd>
+        <dt>Gemiddelde afstand tussen punten</dt><dd id="stat-avg">–</dd>
+        <dt>Langste afstand zonder water</dt><dd id="stat-gap">–</dd>
+        <dt>Gebruikte bron</dt><dd id="stat-source">–</dd>
+        <dt id="stat-rw-label" hidden>Wegwerkzaamheden</dt>
+        <dd id="stat-roadworks" hidden>–</dd>
+        <dt id="stat-lg-label" hidden>Verboden paden</dt>
+        <dd id="stat-legality" hidden>–</dd>
+      </dl>
+      <p id="warning" class="warning" hidden></p>
+      <p id="roadworks-note" class="warning" hidden></p>
+      <p id="legality-note" class="warning" hidden></p>
+      <a id="download" class="download" href="#" hidden>⬇ Download nieuwe GPX</a>
+      <details id="list-wrap" hidden>
+        <summary>Waterpunten op volgorde van rijrichting</summary>
+        <ol id="list"></ol>
+      </details>
+      <details id="rw-list-wrap" hidden>
+        <summary>Wegwerkzaamheden op volgorde van rijrichting</summary>
+        <ol id="rw-list"></ol>
+      </details>
+      <details id="lg-list-wrap" hidden open>
+        <summary>Verboden paden en aandachtspunten</summary>
+        <ol id="lg-list"></ol>
+      </details>
+    </div>
+  </section>
+
+  <section class="map-wrap">
+    <div id="map"></div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/legality.js?v={{ app_version }}"></script>
+<script src="/static/app.js?v={{ app_version }}"></script>
+</body>
+</html>

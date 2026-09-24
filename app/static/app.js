@@ -1,0 +1,228 @@
+/* Frontend voor GPX Drinkwaterpunten */
+(function () {
+  "use strict";
+
+  const map = L.map("map").setView([52.1, 5.3], 7);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap-bijdragers",
+  }).addTo(map);
+
+  const layers = L.layerGroup().addTo(map);
+  const form = document.getElementById("form");
+  const statusEl = document.getElementById("status");
+  const submitBtn = document.getElementById("submit");
+  const results = document.getElementById("results");
+
+  const waterIcon = L.divIcon({
+    className: "water-marker",
+    html: '<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #fff">💧</div>',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+
+  const worksIcon = L.divIcon({
+    className: "works-marker",
+    html: '<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #fff">⚠️</div>',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+
+  // Datumkiezer alleen tonen als de controle is aangevinkt.
+  const roadworksBox = document.getElementById("roadworks");
+  const dateWrap = document.getElementById("roadworks-date-wrap");
+  if (roadworksBox && dateWrap) {
+    const sync = () => { dateWrap.hidden = !roadworksBox.checked; };
+    roadworksBox.addEventListener("change", sync);
+    sync();
+  }
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle("error", Boolean(isError));
+  }
+
+  function esc(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  function popupHtml(wp) {
+    const rows = [`<strong>💧 ${esc(wp.name || "Drinkwaterpunt")}</strong>`];
+    rows.push(`km ${wp.along_route_km.toFixed(1)} · ${Math.round(wp.distance_to_route_m)} m van route`);
+    if (wp.operator) rows.push(`Beheerder: ${esc(wp.operator)}`);
+    if (wp.opening_hours) rows.push(`Open: ${esc(wp.opening_hours)}`);
+    if (wp.website) rows.push(`<a href="${esc(wp.website)}" target="_blank" rel="noopener">website</a>`);
+    rows.push(`<em>${esc(wp.source)}</em>`);
+    return rows.join("<br>");
+  }
+
+  function worksPopup(w) {
+    const rows = [`<strong>⚠️ ${esc(w.cause || "Wegwerkzaamheden")}</strong>`];
+    rows.push(`km ${w.along_route_km.toFixed(1)} · ${Math.round(w.distance_to_route_m)} m van route`);
+    if (w.authority) rows.push(esc(w.authority));
+    if (w.start || w.end) rows.push(`Periode: ${esc(w.start || "?")} t/m ${esc(w.end || "?")}`);
+    if (w.detour) rows.push(`<em>${esc(w.detour)}</em>`);
+    return rows.join("<br>");
+  }
+
+  function renderRoadWorks(data) {
+    const works = data.road_works || [];
+    const label = document.getElementById("stat-rw-label");
+    const value = document.getElementById("stat-roadworks");
+    const note = document.getElementById("roadworks-note");
+    const wrap = document.getElementById("rw-list-wrap");
+    if (!label || !value) return;
+
+    if (!data.roadworks_checked) {
+      label.hidden = value.hidden = true;
+      if (note) note.hidden = true;
+      if (wrap) wrap.hidden = true;
+      return;
+    }
+    label.hidden = value.hidden = false;
+    value.textContent = data.roadworks_error
+      ? "niet beschikbaar"
+      : `${works.length} op ${data.roadworks_date}`;
+
+    if (note) {
+      note.hidden = !data.roadworks_error;
+      note.textContent = data.roadworks_error || "";
+    }
+
+    works.forEach((w) => {
+      // Het afgesloten stuk zelf, zodat je ziet of het echt op jouw route ligt.
+      (w.lines || []).forEach((ln) => {
+        L.polyline(ln, { color: "#f59e0b", weight: 7, opacity: 0.85, dashArray: "8 6" }).addTo(layers);
+      });
+      L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(worksPopup(w)).addTo(layers);
+    });
+
+    const list = document.getElementById("rw-list");
+    if (!list) return;
+    list.innerHTML = "";
+    works.forEach((w) => {
+      const li = document.createElement("li");
+      li.innerHTML = `km ${w.along_route_km.toFixed(1)} – ${esc(w.cause || "Wegwerkzaamheden")}` +
+        `<small>${esc(w.authority || "")} · ${esc(w.start || "?")} t/m ${esc(w.end || "?")}</small>`;
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => map.setView([w.lat, w.lon], 16));
+      list.appendChild(li);
+    });
+    if (wrap) wrap.hidden = works.length === 0;
+  }
+
+  function renderLegality(data) {
+    const label = document.getElementById("stat-lg-label");
+    const value = document.getElementById("stat-legality");
+    const note = document.getElementById("legality-note");
+    const wrap = document.getElementById("lg-list-wrap");
+    if (!label || !value) return;
+    const text = Legality.summary(data);
+    label.hidden = value.hidden = text === null;
+    value.textContent = text || "";
+    if (note) {
+      note.hidden = !data.legality_error;
+      note.textContent = data.legality_error || "";
+    }
+    Legality.draw(data, layers);
+    Legality.fillList(document.getElementById("lg-list"), data, map);
+    if (wrap) wrap.hidden = !(data.legality_segments || []).length;
+  }
+
+  function render(data) {
+    layers.clearLayers();
+
+    const line = L.polyline(data.route, { color: "#0284c7", weight: 4, opacity: 0.85 });
+    line.addTo(layers);
+    L.circleMarker(data.route[0], { radius: 6, color: "#16a34a", fillOpacity: 1 })
+      .bindPopup("Start").addTo(layers);
+    L.circleMarker(data.route[data.route.length - 1], { radius: 6, color: "#dc2626", fillOpacity: 1 })
+      .bindPopup("Finish").addTo(layers);
+
+    data.water_points.forEach((wp) => {
+      L.marker([wp.lat, wp.lon], { icon: waterIcon }).bindPopup(popupHtml(wp)).addTo(layers);
+    });
+    map.fitBounds(line.getBounds(), { padding: [25, 25] });
+
+    const s = data.stats;
+    document.getElementById("stat-distance").textContent = `${s.total_distance_km.toFixed(1)} km`;
+    document.getElementById("stat-count").textContent = s.water_point_count;
+    document.getElementById("stat-avg").textContent =
+      s.average_gap_km === null ? "–" : `${s.average_gap_km.toFixed(1)} km`;
+    document.getElementById("stat-gap").textContent =
+      s.longest_gap_km === null ? "–" : `${s.longest_gap_km.toFixed(1)} km`;
+    document.getElementById("stat-source").textContent = data.source;
+
+    const warn = document.getElementById("warning");
+    warn.hidden = !s.warning;
+    warn.textContent = s.warning || "";
+
+    const dl = document.getElementById("download");
+    dl.href = `/api/download/${data.job_id}?name=${encodeURIComponent(data.filename)}`;
+    dl.setAttribute("download", data.filename);
+    dl.hidden = false;
+
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+    data.water_points.forEach((wp) => {
+      const li = document.createElement("li");
+      li.innerHTML = `km ${wp.along_route_km.toFixed(1)} – ${esc(wp.name || "Drinkwaterpunt")}` +
+        `<small>${Math.round(wp.distance_to_route_m)} m van route</small>`;
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => map.setView([wp.lat, wp.lon], 16));
+      list.appendChild(li);
+    });
+    document.getElementById("list-wrap").hidden = data.water_points.length === 0;
+    renderRoadWorks(data);
+    renderLegality(data);
+    results.hidden = false;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fileInput = document.getElementById("file");
+    if (!fileInput.files.length) {
+      setStatus("Kies eerst een GPX-bestand.", true);
+      return;
+    }
+    const body = new FormData();
+    body.append("file", fileInput.files[0]);
+    body.append("radius", document.getElementById("radius").value);
+    body.append("source", document.getElementById("source").value);
+    if (roadworksBox && roadworksBox.checked) {
+      body.append("roadworks", "true");
+      const dateEl = document.getElementById("ride_date");
+      if (dateEl && dateEl.value) body.append("ride_date", dateEl.value);
+    }
+
+    const legalityBox = document.getElementById("legality");
+    if (legalityBox && legalityBox.checked) body.append("legality", "true");
+
+    submitBtn.disabled = true;
+    setStatus(
+      roadworksBox && roadworksBox.checked
+        ? "Bezig met verwerken… (eerste controle op wegwerkzaamheden duurt ~10 seconden)"
+        : "Bezig met verwerken… (waterpunten ophalen kan even duren)"
+    );
+    try {
+      const response = await fetch("/api/process", { method: "POST", body });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Verwerking mislukt");
+      render(payload);
+      let msg = `Klaar: ${payload.stats.water_point_count} waterpunten gevonden.`;
+      if (payload.roadworks_checked && !payload.roadworks_error) {
+        msg += ` ${(payload.road_works || []).length} wegwerkzaamheden op de route.`;
+      }
+      if (payload.legality_checked && !payload.legality_error) {
+        msg += ` Verboden paden: ${Legality.summary(payload)}.`;
+      }
+      setStatus(msg);
+    } catch (err) {
+      setStatus(err.message, true);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+})();

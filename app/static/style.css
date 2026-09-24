@@ -1,0 +1,284 @@
+:root {
+  --bg: #0f172a;
+  --panel: #ffffff;
+  --accent: #0284c7;
+  --accent-dark: #0369a1;
+  --text: #0f172a;
+  --muted: #64748b;
+  --warn-bg: #fef3c7;
+  --warn-border: #f59e0b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: #f1f5f9;
+}
+
+header {
+  background: var(--bg);
+  color: #f8fafc;
+  padding: 1.2rem 1.5rem;
+}
+
+header h1 { margin: 0 0 .25rem; font-size: 1.35rem; }
+header p { margin: 0; color: #cbd5e1; font-size: .9rem; }
+
+main {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+label {
+  display: block;
+  font-size: .8rem;
+  font-weight: 600;
+  margin: .75rem 0 .25rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+input[type="file"], input[type="search"], select {
+  width: 100%;
+  padding: .5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: .95rem;
+}
+
+input[type="search"] { margin-bottom: .5rem; }
+
+button {
+  margin-top: 1rem;
+  width: 100%;
+  padding: .7rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: var(--accent-dark); }
+button:disabled { background: #94a3b8; cursor: progress; }
+
+.status { font-size: .9rem; color: var(--muted); min-height: 1.2em; }
+.status.error { color: #b91c1c; font-weight: 600; }
+
+h2 { font-size: 1.05rem; margin: 1rem 0 .5rem; }
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .3rem .75rem;
+  margin: 0;
+  font-size: .9rem;
+}
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-weight: 600; text-align: right; }
+
+.warning {
+  background: var(--warn-bg);
+  border-left: 4px solid var(--warn-border);
+  padding: .6rem .75rem;
+  border-radius: 4px;
+  font-size: .88rem;
+}
+
+.download {
+  display: block;
+  margin-top: 1rem;
+  padding: .7rem;
+  text-align: center;
+  background: #16a34a;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.download:hover { background: #15803d; }
+
+details { margin-top: 1rem; font-size: .88rem; }
+details summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+#list { padding-left: 1.2rem; max-height: 260px; overflow-y: auto; }
+#list li { margin-bottom: .35rem; }
+#list small { color: var(--muted); display: block; }
+
+.map-wrap {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: .5rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+#map {
+  height: calc(100vh - 8rem);
+  min-height: 420px;
+  border-radius: 8px;
+}
+
+/* Navigatie */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+header nav { display: flex; gap: .5rem; }
+
+header nav a {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: .9rem;
+  font-weight: 600;
+  padding: .4rem .8rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .08);
+}
+
+header nav a:hover { background: rgba(255, 255, 255, .18); }
+header nav a.active { background: var(--accent); color: #fff; }
+
+/* Strava-pagina */
+.strava-btn, button.secondary {
+  display: block;
+  width: 100%;
+  margin-top: .5rem;
+  padding: .7rem;
+  border: 0;
+  border-radius: 6px;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.strava-btn { background: #fc4c02; color: #fff; }
+.strava-btn:hover { background: #e34402; }
+
+button.secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+  font-size: .85rem;
+  padding: .45rem .7rem;
+  width: auto;
+}
+button.secondary:hover:not(:disabled) { background: #cbd5e1; }
+
+.toolbar { display: flex; gap: .5rem; margin-bottom: .5rem; }
+
+.muted { color: var(--muted); font-weight: 400; }
+
+ul.routes, ul.results { list-style: none; margin: 0; padding: 0; }
+
+ul.routes {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+ul.routes li { border-bottom: 1px solid #f1f5f9; }
+ul.routes li:last-child { border-bottom: 0; }
+
+ul.routes label {
+  display: flex;
+  gap: .6rem;
+  align-items: center;
+  margin: 0;
+  padding: .5rem .6rem;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: .9rem;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+}
+
+ul.routes label:hover { background: #f8fafc; }
+ul.routes input { margin: 0; }
+ul.routes small, ul.results small { display: block; color: var(--muted); font-size: .8rem; }
+
+ul.results li {
+  padding: .6rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: .9rem;
+}
+
+.error-text { color: #b91c1c !important; }
+.warn-text { color: #b45309 !important; }
+
+.dl { display: flex; gap: .5rem; margin-top: .4rem; flex-wrap: wrap; }
+
+.dl a {
+  padding: .35rem .6rem;
+  border-radius: 5px;
+  background: #e2e8f0;
+  color: #0f172a;
+  text-decoration: none;
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+.dl a.primary { background: #16a34a; color: #fff; }
+.dl a:hover { filter: brightness(.95); }
+
+code {
+  background: #f1f5f9;
+  padding: .1rem .3rem;
+  border-radius: 3px;
+  font-size: .85em;
+}
+
+/* Optieblok voor de controle op wegwerkzaamheden */
+.option-group {
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  margin: 0.9rem 0 0.2rem;
+}
+.option-group label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin: 0;
+  cursor: pointer;
+}
+.option-group label.check input {
+  width: auto;
+  margin: 0;
+}
+.option-group .hint {
+  font-size: 0.82rem;
+  color: #5b6675;
+  margin: 0.4rem 0 0;
+}
+#rw-list small,
+#list small {
+  display: block;
+  color: #5b6675;
+}
