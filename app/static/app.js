@@ -28,16 +28,7 @@
     iconAnchor: [11, 11],
   });
 
-  Weather.init();
-
-  // Datumkiezer alleen tonen als de controle is aangevinkt.
-  const roadworksBox = document.getElementById("roadworks");
-  const dateWrap = document.getElementById("roadworks-date-wrap");
-  if (roadworksBox && dateWrap) {
-    const sync = () => { dateWrap.hidden = !roadworksBox.checked; };
-    roadworksBox.addEventListener("change", sync);
-    sync();
-  }
+  Checks.init(submitBtn);
 
   function setStatus(text, isError) {
     statusEl.textContent = text;
@@ -71,28 +62,7 @@
 
   function renderRoadWorks(data) {
     const works = data.road_works || [];
-    const label = document.getElementById("stat-rw-label");
-    const value = document.getElementById("stat-roadworks");
-    const note = document.getElementById("roadworks-note");
     const wrap = document.getElementById("rw-list-wrap");
-    if (!label || !value) return;
-
-    if (!data.roadworks_checked) {
-      label.hidden = value.hidden = true;
-      if (note) note.hidden = true;
-      if (wrap) wrap.hidden = true;
-      return;
-    }
-    label.hidden = value.hidden = false;
-    value.textContent = data.roadworks_error
-      ? "niet beschikbaar"
-      : `${works.length} op ${data.roadworks_date}`;
-
-    if (note) {
-      note.hidden = !data.roadworks_error;
-      note.textContent = data.roadworks_error || "";
-    }
-
     works.forEach((w) => {
       // Het afgesloten stuk zelf, zodat je ziet of het echt op jouw route ligt.
       (w.lines || []).forEach((ln) => {
@@ -116,32 +86,14 @@
   }
 
   function renderLegality(data) {
-    const label = document.getElementById("stat-lg-label");
-    const value = document.getElementById("stat-legality");
-    const note = document.getElementById("legality-note");
     const wrap = document.getElementById("lg-list-wrap");
-    if (!label || !value) return;
-    const text = Legality.summary(data);
-    label.hidden = value.hidden = text === null;
-    value.textContent = text || "";
-    if (note) {
-      note.hidden = !data.legality_error;
-      note.textContent = data.legality_error || "";
-    }
     Legality.draw(data, layers);
     Legality.fillList(document.getElementById("lg-list"), data, map);
     if (wrap) wrap.hidden = !(data.legality_segments || []).length;
   }
 
   function renderWeather(data) {
-    const label = document.getElementById("stat-wx-label");
-    const value = document.getElementById("stat-weather");
     const box = document.getElementById("weather-result");
-    const text = Weather.summary(data);
-    if (label && value) {
-      label.hidden = value.hidden = text === null;
-      value.textContent = text || "";
-    }
     if (box) box.innerHTML = Weather.panel(data);
     Weather.draw(data, layers);
   }
@@ -162,6 +114,8 @@
     map.fitBounds(line.getBounds(), { padding: [25, 25] });
 
     const s = data.stats;
+    document.getElementById("check-cards").innerHTML = Checks.cards(data);
+    document.querySelectorAll(".water-stat").forEach((node) => { node.hidden = !data.water_checked; });
     document.getElementById("stat-distance").textContent = `${s.total_distance_km.toFixed(1)} km`;
     document.getElementById("stat-count").textContent = s.water_point_count;
     document.getElementById("stat-avg").textContent =
@@ -169,10 +123,6 @@
     document.getElementById("stat-gap").textContent =
       s.longest_gap_km === null ? "–" : `${s.longest_gap_km.toFixed(1)} km`;
     document.getElementById("stat-source").textContent = data.source;
-
-    const warn = document.getElementById("warning");
-    warn.hidden = !s.warning;
-    warn.textContent = s.warning || "";
 
     const dl = document.getElementById("download");
     dl.href = `/api/download/${data.job_id}?name=${encodeURIComponent(data.filename)}`;
@@ -203,42 +153,23 @@
       setStatus("Kies eerst een GPX-bestand.", true);
       return;
     }
+    if (!Checks.anySelected()) {
+      setStatus("Kies minimaal één controle.", true);
+      return;
+    }
     const body = new FormData();
     body.append("file", fileInput.files[0]);
-    body.append("radius", document.getElementById("radius").value);
-    body.append("source", document.getElementById("source").value);
-    if (roadworksBox && roadworksBox.checked) {
-      body.append("roadworks", "true");
-      const dateEl = document.getElementById("ride_date");
-      if (dateEl && dateEl.value) body.append("ride_date", dateEl.value);
-    }
-
-    const legalityBox = document.getElementById("legality");
-    if (legalityBox && legalityBox.checked) body.append("legality", "true");
-    Weather.appendTo(body);
+    Checks.appendTo(body);
 
     submitBtn.disabled = true;
-    setStatus(
-      roadworksBox && roadworksBox.checked
-        ? "Bezig met verwerken… (eerste controle op wegwerkzaamheden duurt ~10 seconden)"
-        : "Bezig met verwerken… (waterpunten ophalen kan even duren)"
-    );
+    setStatus(Checks.busyText());
     try {
       const response = await fetch("/api/process", { method: "POST", body });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Verwerking mislukt");
       render(payload);
-      let msg = `Klaar: ${payload.stats.water_point_count} waterpunten gevonden.`;
-      if (payload.roadworks_checked && !payload.roadworks_error) {
-        msg += ` ${(payload.road_works || []).length} wegwerkzaamheden op de route.`;
-      }
-      if (payload.legality_checked && !payload.legality_error) {
-        msg += ` Verboden paden: ${Legality.summary(payload)}.`;
-      }
-      if (payload.weather_checked && !payload.weather_error) {
-        msg += ` Regen: ${Weather.summary(payload)}.`;
-      }
-      setStatus(msg);
+      setStatus("");
+      results.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
       setStatus(err.message, true);
     } finally {

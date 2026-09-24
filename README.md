@@ -70,16 +70,36 @@ Drie pagina's:
 | Strava routes | `/strava` | routes uit je Strava-account ophalen en verwerken |
 | Routeboek routes | `/routeboek` | routes van een routeboek.cc-clubpagina ophalen en verwerken |
 
+### Controles kiezen
+
+Op alle drie de pagina's kies je zelf wat er met de route moet gebeuren;
+elke controle is los aan of uit te zetten (minimaal één):
+
+| Controle | Instellingen (verschijnen pas als je hem aanvinkt) |
+|---|---|
+| 💧 Waterpunten toevoegen | zoekradius 100 / 250 / 500 / 750 / 1000 m (standaard 250), databron automatisch / NL / OSM |
+| ⚠️ Wegwerkzaamheden | datum van de rit (standaard vandaag) |
+| ⛔ Verboden paden | – |
+| 🌧️ Regen onderweg | vertrektijd en snelheid (standaard 30 km/u) |
+
+- Bij het eerste bezoek staat alleen **Waterpunten** aan. Je keuze wordt in
+  de browser onthouden (`localStorage`), ook tussen de pagina's.
+- Eén knop: **Controleer route**. Zonder aangevinkte controle is die grijs.
+- Het resultaat begint met een statuskaartje per controle: groen (in orde),
+  oranje (let op), rood (probleem) of grijs (niet beschikbaar). Is alles
+  groen, dan staat er **✅ Alles in orde**.
+- De GPX bevat alleen de waypoints van de gekozen controles. Zonder
+  waterpunten heet het bestand `…-gecontroleerd.gpx` (upload) of
+  `Routenaam_gecontroleerd.gpx` (Strava/routeboek) in plaats van
+  `…-water.gpx` / `Routenaam_waterpunten.gpx`. Ook als er niets gevonden is,
+  kun je de GPX downloaden.
+
 ### Pagina "GPX upload"
 
-- GPX-uploadknop
-- keuze zoekradius: 100 / 250 / 500 / 750 / 1000 meter (standaard 250)
-- keuze databron (automatisch / NL / OSM)
-- optie "Controleer op wegwerkzaamheden" met datumkiezer (standaard vandaag)
-- optie "Controleer op regen" met vertrektijd en snelheid (standaard 30 km/u)
-- startknop
-- na verwerking: interactieve Leaflet-kaart met route en waterpunten,
-  analysegegevens en een downloadknop
+- GPX-uploadknop, de controles hierboven en de knop **Controleer route**
+- daarna: statuskaartjes, interactieve Leaflet-kaart met route en gevonden
+  punten, routeafstand (plus waterpuntstatistiek als die controle aan stond)
+  en een downloadknop
 
 ### Pagina "Strava routes"
 
@@ -87,13 +107,10 @@ Drie pagina's:
 - lijst met je routes: naam, afstand, hoogtemeters en of de route privé is
 - zoekveld om te filteren op naam
 - checkbox-selectie (één of meerdere routes, ook "alles aan/uit")
-- keuze zoekradius en databron
-- optie "Controleer op wegwerkzaamheden" met datumkiezer (standaard vandaag)
-- optie "Controleer op regen" met vertrektijd en snelheid (standaard 30 km/u)
-- knop **Maak waterpunten GPX**
-- per route het resultaat met twee downloads: het origineel
-  (`Routenaam.gpx`) en de verrijkte versie (`Routenaam_waterpunten.gpx`),
-  plus alle routes en waterpunten op de kaart
+- de controles hierboven en de knop **Controleer route**
+- per route statuskaartjes en twee downloads: het origineel
+  (`Routenaam.gpx`) en de verrijkte versie (`Routenaam_waterpunten.gpx` of
+  `Routenaam_gecontroleerd.gpx`), plus alle routes en punten op de kaart
 
 ### Pagina "Routeboek routes"
 
@@ -101,15 +118,14 @@ Drie pagina's:
   `routeboek.cc/club/stampers`, instelbaar via `ROUTEBOEK_CLUB_SLUG`): naam,
   afstand en hoogtemeters
 - zoekveld om te filteren op naam
-- checkbox-selectie, keuze zoekradius/databron en dezelfde opties als de
-  andere pagina's
-- knop **Maak waterpunten GPX**, met dezelfde resultaatweergave als de
+- checkbox-selectie, dezelfde controles als de andere pagina's
+- knop **Controleer route**, met dezelfde resultaatweergave als de
   Strava-pagina
 
 Er is geen officiële routeboek.cc-API: de routelijst wordt gelezen uit de
 HTML van de clubpagina (kort gecached, standaard 15 minuten) en de GPX wordt
 per geselecteerde route rechtstreeks gedownload op het moment dat je op
-"Maak waterpunten GPX" klikt. Ontbreekt het GPX-bestand op routeboek.cc
+"Controleer route" klikt. Ontbreekt het GPX-bestand op routeboek.cc
 (gemeten: 1 van de 166 Stampers-routes geeft een 404), dan wordt de route
 opgebouwd uit de kaartcoördinaten op de detailpagina — zonder hoogtegegevens,
 afstand wijkt ~0,1% af. Er wordt bewust **niet** periodiek alle media
@@ -679,18 +695,18 @@ Zie `.env.example`. Een `.env` in de projectmap wordt automatisch geladen.
 | Endpoint | Methode | Omschrijving |
 |---|---|---|
 | `/` | GET | Webinterface |
-| `/api/process` | POST | multipart: `file`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
+| `/api/process` | POST | multipart: `file`, `water` (standaard `true`), `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
 | `/api/download/{job_id}` | GET | Gegenereerde GPX |
 | `/api/cache/refresh` | POST | Forceer verversen NL-dataset |
 | `/api/roadworks/refresh` | POST | Forceer verversen NDW-wegwerkzaamheden |
 | `/api/routeboek/routes` | GET | Routes van de routeboek.cc-clubpagina (`?refresh=1` forceert een nieuwe scrape) |
-| `/api/routeboek/process` | POST | JSON: `route_ids`, `radius`, `source`, `roadworks`, `ride_date`, `legality` → resultaat per route |
+| `/api/routeboek/process` | POST | JSON: `route_ids`, `water`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure`, `speed_kmh` → resultaat per route |
 | `/strava` | GET | Pagina met Strava-routes |
 | `/strava/connect` | GET | Start OAuth-koppeling |
 | `/strava/callback` | GET | OAuth-callback van Strava |
 | `/api/strava/status` | GET | Configuratie- en koppelstatus |
 | `/api/strava/routes` | GET | Routes van de gekoppelde atleet |
-| `/api/strava/process` | POST | JSON: `route_ids`, `radius`, `source`, `roadworks`, `ride_date` → resultaat per route |
+| `/api/strava/process` | POST | JSON: zelfde velden als `/api/routeboek/process` → resultaat per route |
 | `/api/strava/disconnect` | POST | Koppeling en tokens verwijderen |
 | `/api/health` | GET | Status + cacheleeftijd |
 | `/docs` | GET | OpenAPI-documentatie |
@@ -704,6 +720,11 @@ curl -s -F "file=@rit.gpx" -F "radius=250" -F "source=auto" \
 # met controle op wegwerkzaamheden voor een specifieke datum
 curl -s -F "file=@rit.gpx" -F "radius=250" -F "roadworks=true" \
   -F "ride_date=2026-09-12" http://localhost:8080/api/process | jq '.road_works'
+
+# alleen controleren op regen, zonder waterpunten
+curl -s -F "file=@rit.gpx" -F "water=false" -F "weather=true" \
+  -F "departure=2026-09-26T09:00" -F "speed_kmh=28" \
+  http://localhost:8080/api/process | jq '.weather_segments'
 
 curl -sOJ "http://localhost:8080/api/download/<job_id>?name=rit-water.gpx"
 ```
@@ -737,8 +758,8 @@ app/
     routeboek_service.py   routeboek.cc scrapen (routelijst + GPX-download)
     weather_service.py     regencontrole: KNMI Harmonie (Open-Meteo) + Buienradar
     token_store.py         versleutelde tokenopslag
-  templates/{index.html,strava.html,routeboek.html,_weather_option.html}
-  static/{style.css,app.js,strava.js,routeboek.js,legality.js,weather.js}
+  templates/{index.html,strava.html,routeboek.html,_checks.html,_weather_option.html}
+  static/{style.css,app.js,strava.js,routeboek.js,checks.js,legality.js,weather.js}
 tests/
 Dockerfile, entrypoint.sh, docker-compose.yml, requirements.txt
 ```

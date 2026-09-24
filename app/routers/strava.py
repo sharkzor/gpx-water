@@ -21,6 +21,7 @@ from app.routers.core import (
     legality_context,
     parse_ride_date,
     parse_weather,
+    require_any_check,
     run_processing,
     validate_options,
     weather_context,
@@ -201,6 +202,7 @@ def routes(request: Request) -> list[StravaRouteInfo]:
 
 class StravaProcessRequest(BaseModel):
     route_ids: list[str] = Field(default_factory=list, max_length=25)
+    water: bool = True
     radius: int | None = None
     source: str = processing.SOURCE_AUTO
     roadworks: bool = False
@@ -215,10 +217,11 @@ class StravaProcessRequest(BaseModel):
 def process_routes(
     request: Request, payload: StravaProcessRequest
 ) -> list[StravaProcessedRoute]:
-    """Download de gekozen Strava-routes en verrijk ze met drinkwaterpunten."""
+    """Download de gekozen Strava-routes en voer de gekozen controles uit."""
     _, session = _require_session(request)
     if not payload.route_ids:
         raise HTTPException(status_code=400, detail="Selecteer minimaal één route")
+    require_any_check(payload.water, payload.roadworks, payload.legality, payload.weather)
     radius_m = validate_options(payload.radius, payload.source)
     day = parse_ride_date(payload.ride_date)
     weather_request = parse_weather(payload.weather, payload.departure, payload.speed_kmh)
@@ -241,8 +244,11 @@ def process_routes(
                 day,
                 payload.legality,
                 weather_request,
+                payload.water,
             )
-            result.filename = processing.safe_filename(name, "_waterpunten")
+            result.filename = processing.safe_filename(
+                name, processing.output_suffix(payload.water)
+            )
             results.append(
                 StravaProcessedRoute(
                     route_id=str(route_id),

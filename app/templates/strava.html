@@ -12,7 +12,7 @@
 <header>
   <div>
     <h1>💧 Strava routes</h1>
-    <p>Haal je eigen Strava-routes op en maak er een GPX met drinkwaterpunten van.</p>
+    <p>Haal je eigen Strava-routes op; voeg waterpunten toe of controleer ze op wegwerkzaamheden, verboden paden en regen.</p>
   </div>
   <nav>
     <a href="/">GPX upload</a>
@@ -39,54 +39,6 @@
     </div>
 
     <div id="route-box" hidden>
-      <label for="radius">Zoekradius</label>
-      <select id="radius">
-        {% for r in radii %}
-        <option value="{{ r }}" {% if r == default_radius %}selected{% endif %}>{{ r }} meter</option>
-        {% endfor %}
-      </select>
-
-      <label for="source">Databron</label>
-      <select id="source">
-        <option value="auto" selected>Automatisch (NL &gt; 80% → drinkwaterpunten.nl)</option>
-        <option value="nl">drinkwaterpunten.nl</option>
-        <option value="osm">OpenStreetMap</option>
-      </select>
-
-      {% if roadworks_enabled %}
-      <fieldset class="option-group">
-        <label class="check">
-          <input type="checkbox" id="roadworks">
-          Controleer op wegwerkzaamheden (alleen Nederland)
-        </label>
-        <div id="roadworks-date-wrap" hidden>
-          <label for="ride_date">Datum van de rit</label>
-          <input type="date" id="ride_date" value="{{ today }}">
-          <p class="hint">
-            Bron: NDW/Melvin. Gemeenten melden hier hun werkzaamheden;
-            de dekking is niet volledig.
-          </p>
-        </div>
-      </fieldset>
-      {% endif %}
-
-      {% if legality_enabled %}
-      <fieldset class="option-group">
-        <label class="check">
-          <input type="checkbox" id="legality">
-          Controleer op verboden paden (alleen Nederland)
-        </label>
-        <p class="hint">
-          Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
-          niet (zonder meer) mag. Bron: OpenStreetMap.
-          {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
-          na de eerste start een kwartier duren.</strong>{% endif %}
-        </p>
-      </fieldset>
-      {% endif %}
-
-      {% include "_weather_option.html" %}
-
       <label>Routes <span id="route-count" class="muted"></span></label>
       <input type="search" id="route-search" placeholder="Zoek op naam…" autocomplete="off">
       <div class="toolbar">
@@ -95,7 +47,10 @@
       </div>
       <ul id="routes" class="routes"></ul>
 
-      <button type="button" id="process-btn">Maak waterpunten GPX</button>
+      {% include "_checks.html" %}
+
+
+      <button type="button" id="process-btn">Controleer route</button>
       <p id="status" class="status"></p>
     </div>
 
@@ -113,6 +68,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/legality.js?v={{ app_version }}"></script>
 <script src="/static/weather.js?v={{ app_version }}"></script>
+<script src="/static/checks.js?v={{ app_version }}"></script>
 <script src="/static/strava.js?v={{ app_version }}"></script>
 </body>
 </html>

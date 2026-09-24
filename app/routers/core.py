@@ -79,6 +79,18 @@ def parse_weather(
     return weather_service.WeatherRequest(departure=moment, speed_kmh=float(speed))
 
 
+def require_any_check(
+    water: bool, roadworks: bool, legality: bool, weather: bool
+) -> None:
+    """Minimaal één controle moet gekozen zijn, anders valt er niets te doen."""
+    if not (water or roadworks or legality or weather):
+        raise HTTPException(
+            status_code=400,
+            detail="Kies minimaal één controle: waterpunten, wegwerkzaamheden, "
+            "verboden paden of regen.",
+        )
+
+
 def weather_context() -> dict[str, object]:
     """Template-variabelen voor de optie "Controleer op regen"."""
     return {
@@ -105,11 +117,13 @@ def run_processing(
     ride_date: date | None = None,
     check_legality: bool = False,
     weather: weather_service.WeatherRequest | None = None,
+    check_water: bool = True,
 ) -> ProcessResult:
-    """Voer de waterpuntenverwerking uit en vertaal fouten naar HTTP-antwoorden."""
+    """Voer de gekozen controles uit en vertaal fouten naar HTTP-antwoorden."""
     try:
         return processing.process_gpx(
-            raw, filename, radius_m, source, check_roadworks, ride_date, check_legality, weather
+            raw, filename, radius_m, source, check_roadworks, ride_date, check_legality,
+            weather, check_water,
         )
     except GpxError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -169,6 +183,7 @@ async def health() -> JSONResponse:
 @router.post("/api/process", response_model=ProcessResult)
 async def process(
     file: UploadFile = File(...),
+    water: bool = Form(default=True),
     radius: int = Form(default=None),
     source: str = Form(default=processing.SOURCE_AUTO),
     roadworks: bool = Form(default=False),
@@ -178,6 +193,7 @@ async def process(
     departure: str = Form(default=None),
     speed_kmh: float = Form(default=None),
 ) -> ProcessResult:
+    require_any_check(water, roadworks, legality, weather)
     radius_m = validate_options(radius, source)
     day = parse_ride_date(ride_date)
     weather_request = parse_weather(weather, departure, speed_kmh)
@@ -192,7 +208,7 @@ async def process(
         )
     return run_processing(
         raw, file.filename or "route.gpx", radius_m, source, roadworks, day, legality,
-        weather_request,
+        weather_request, water,
     )
 
 
@@ -203,7 +219,7 @@ async def download(job_id: str, name: str | None = None) -> FileResponse:
     path = processing.output_path(job_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Bestand niet (meer) beschikbaar")
-    filename = name if name and name.endswith(".gpx") else "route-water.gpx"
+    filename = name if name and name.endswith(".gpx") else "route-gecontroleerd.gpx"
     return FileResponse(
         path, media_type="application/gpx+xml", filename=filename.replace("/", "_")
     )

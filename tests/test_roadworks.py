@@ -247,12 +247,12 @@ def test_uitschakelen_via_config(client: TestClient, sample_gpx: str, monkeypatc
     assert client.post("/api/roadworks/refresh").status_code == 404
 
     page = client.get("/")
-    assert "Controleer op wegwerkzaamheden" not in page.text
+    assert "Wegwerkzaamheden (alleen Nederland)" not in page.text
 
 
 def test_pagina_toont_optie_en_datum(client: TestClient) -> None:
     page = client.get("/")
-    assert "Controleer op wegwerkzaamheden" in page.text
+    assert "Wegwerkzaamheden (alleen Nederland)" in page.text
     assert 'type="date"' in page.text
     assert date.today().isoformat() in page.text
 

@@ -12,7 +12,7 @@
 <header>
   <div>
     <h1>💧 GPX Drinkwaterpunten</h1>
-    <p>Upload een fietsroute, krijg een GPX met drinkwater-waypoints voor je Wahoo ELEMNT ROAM.</p>
+    <p>Upload een fietsroute en voeg waterpunten toe of controleer op wegwerkzaamheden, verboden paden en regen — als GPX voor je Wahoo ELEMNT ROAM.</p>
   </div>
   {% if strava_visible or routeboek_visible %}
   <nav>
@@ -29,78 +29,24 @@
       <label for="file">GPX-bestand</label>
       <input type="file" id="file" name="file" accept=".gpx,application/gpx+xml" required>
 
-      <label for="radius">Zoekradius</label>
-      <select id="radius" name="radius">
-        {% for r in radii %}
-        <option value="{{ r }}" {% if r == default_radius %}selected{% endif %}>{{ r }} meter</option>
-        {% endfor %}
-      </select>
+      {% include "_checks.html" %}
 
-      <label for="source">Databron</label>
-      <select id="source" name="source">
-        <option value="auto" selected>Automatisch (NL &gt; 80% → drinkwaterpunten.nl)</option>
-        <option value="nl">drinkwaterpunten.nl</option>
-        <option value="osm">OpenStreetMap</option>
-      </select>
-
-      {% if roadworks_enabled %}
-      <fieldset class="option-group">
-        <label class="check">
-          <input type="checkbox" id="roadworks" name="roadworks">
-          Controleer op wegwerkzaamheden (alleen Nederland)
-        </label>
-        <div id="roadworks-date-wrap" hidden>
-          <label for="ride_date">Datum van de rit</label>
-          <input type="date" id="ride_date" name="ride_date" value="{{ today }}">
-          <p class="hint">
-            Bron: NDW/Melvin. Gemeenten melden hier hun werkzaamheden;
-            de dekking is niet volledig.
-          </p>
-        </div>
-      </fieldset>
-      {% endif %}
-
-      {% if legality_enabled %}
-      <fieldset class="option-group">
-        <label class="check">
-          <input type="checkbox" id="legality" name="legality">
-          Controleer op verboden paden (alleen Nederland)
-        </label>
-        <p class="hint">
-          Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
-          niet (zonder meer) mag. Bron: OpenStreetMap.
-          {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
-          na de eerste start een kwartier duren.</strong>{% endif %}
-        </p>
-      </fieldset>
-      {% endif %}
-
-      {% include "_weather_option.html" %}
-
-      <button type="submit" id="submit">Verwerk route</button>
+      <button type="submit" id="submit">Controleer route</button>
     </form>
     <p id="status" class="status"></p>
 
     <div id="results" hidden>
-      <h2>Analyse</h2>
+      <h2>Resultaat</h2>
+      <div id="check-cards"></div>
       <dl class="stats">
         <dt>Totale routeafstand</dt><dd id="stat-distance">–</dd>
-        <dt>Aantal waterpunten</dt><dd id="stat-count">–</dd>
-        <dt>Gemiddelde afstand tussen punten</dt><dd id="stat-avg">–</dd>
-        <dt>Langste afstand zonder water</dt><dd id="stat-gap">–</dd>
-        <dt>Gebruikte bron</dt><dd id="stat-source">–</dd>
-        <dt id="stat-rw-label" hidden>Wegwerkzaamheden</dt>
-        <dd id="stat-roadworks" hidden>–</dd>
-        <dt id="stat-lg-label" hidden>Verboden paden</dt>
-        <dd id="stat-legality" hidden>–</dd>
-        <dt id="stat-wx-label" hidden>Regen onderweg</dt>
-        <dd id="stat-weather" hidden>–</dd>
+        <dt class="water-stat">Aantal waterpunten</dt><dd class="water-stat" id="stat-count">–</dd>
+        <dt class="water-stat">Gemiddelde afstand tussen punten</dt><dd class="water-stat" id="stat-avg">–</dd>
+        <dt class="water-stat">Langste afstand zonder water</dt><dd class="water-stat" id="stat-gap">–</dd>
+        <dt class="water-stat">Gebruikte bron</dt><dd class="water-stat" id="stat-source">–</dd>
       </dl>
       <div id="weather-result"></div>
-      <p id="warning" class="warning" hidden></p>
-      <p id="roadworks-note" class="warning" hidden></p>
-      <p id="legality-note" class="warning" hidden></p>
-      <a id="download" class="download" href="#" hidden>⬇ Download nieuwe GPX</a>
+      <a id="download" class="download" href="#" hidden>⬇ Download GPX</a>
       <details id="list-wrap" hidden>
         <summary>Waterpunten op volgorde van rijrichting</summary>
         <ol id="list"></ol>
@@ -124,6 +70,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/legality.js?v={{ app_version }}"></script>
 <script src="/static/weather.js?v={{ app_version }}"></script>
+<script src="/static/checks.js?v={{ app_version }}"></script>
 <script src="/static/app.js?v={{ app_version }}"></script>
 </body>
 </html>

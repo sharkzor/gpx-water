@@ -15,6 +15,7 @@ from app.routers.core import (
     legality_context,
     parse_ride_date,
     parse_weather,
+    require_any_check,
     run_processing,
     validate_options,
     weather_context,
@@ -66,6 +67,7 @@ def routes(refresh: bool = False) -> list[RouteboekRouteInfo]:
 
 class RouteboekProcessRequest(BaseModel):
     route_ids: list[str] = Field(default_factory=list, max_length=25)
+    water: bool = True
     radius: int | None = None
     source: str = processing.SOURCE_AUTO
     roadworks: bool = False
@@ -78,9 +80,10 @@ class RouteboekProcessRequest(BaseModel):
 
 @router.post("/api/routeboek/process", response_model=list[RouteboekProcessedRoute])
 def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedRoute]:
-    """Download de gekozen routeboek.cc-routes en verrijk ze met drinkwaterpunten."""
+    """Download de gekozen routeboek.cc-routes en voer de gekozen controles uit."""
     if not payload.route_ids:
         raise HTTPException(status_code=400, detail="Selecteer minimaal één route")
+    require_any_check(payload.water, payload.roadworks, payload.legality, payload.weather)
     radius_m = validate_options(payload.radius, payload.source)
     day = parse_ride_date(payload.ride_date)
     weather_request = parse_weather(payload.weather, payload.departure, payload.speed_kmh)
@@ -110,8 +113,11 @@ def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedR
                 day,
                 payload.legality,
                 weather_request,
+                payload.water,
             )
-            result.filename = processing.safe_filename(name, "_waterpunten")
+            result.filename = processing.safe_filename(
+                name, processing.output_suffix(payload.water)
+            )
             results.append(
                 RouteboekProcessedRoute(
                     route_id=str(route_id),

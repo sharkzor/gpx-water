@@ -191,3 +191,24 @@ def test_process_onbekende_route_geeft_fout_per_item(monkeypatch, client: TestCl
     assert response.status_code == 200
     items = response.json()
     assert items[0]["error"]
+
+
+def test_process_alleen_controles_zonder_waterpunten(monkeypatch, client: TestClient, sample_gpx: str) -> None:
+    from app.services import roadworks_nl
+
+    _stub_http(monkeypatch, gpx_bytes=sample_gpx.encode("utf-8"))
+    monkeypatch.setattr(roadworks_nl, "load_road_works_near", lambda *a, **k: [])
+    response = client.post(
+        "/api/routeboek/process",
+        json={"route_ids": ["5"], "water": False, "roadworks": True},
+    )
+    item = response.json()[0]
+    assert item["error"] is None
+    assert item["result"]["water_checked"] is False
+    assert item["result"]["filename"] == "30k-Trainingsrondje-Dirk_gecontroleerd.gpx"
+
+
+def test_process_zonder_enige_controle_geeft_400(client: TestClient) -> None:
+    response = client.post("/api/routeboek/process", json={"route_ids": ["5"], "water": False})
+    assert response.status_code == 400
+    assert "minimaal één controle" in response.json()["detail"]

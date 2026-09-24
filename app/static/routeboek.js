@@ -142,21 +142,12 @@
 
       Legality.draw(r, layers);
       Weather.draw(r, layers);
-      const lg = Legality.summary(r);
 
       li.innerHTML =
         `<strong style="border-left:4px solid ${color};padding-left:.4rem">${esc(item.name)}</strong>` +
-        `<small>${r.stats.total_distance_km.toFixed(1)} km · ${r.stats.water_point_count} waterpunten · ` +
-        `langste stuk zonder water ${r.stats.longest_gap_km.toFixed(1)} km · bron ${esc(r.source)}</small>` +
-        (r.roadworks_checked && !r.roadworks_error
-          ? `<small>⚠️ ${(r.road_works || []).length} wegwerkzaamheden op ${esc(r.roadworks_date)}</small>`
-          : "") +
-        (r.roadworks_error ? `<small class="warn-text">${esc(r.roadworks_error)}</small>` : "") +
-        (lg !== null && !r.legality_error
-          ? `<small${Legality.counts(r).forbidden ? ' class="warn-text"' : ""}>⛔ Verboden paden: ${esc(lg)}</small>`
-          : "") +
-        (r.legality_error ? `<small class="warn-text">${esc(r.legality_error)}</small>` : "") +
-        (r.stats.warning ? `<small class="warn-text">${esc(r.stats.warning)}</small>` : "") +
+        `<small>${r.stats.total_distance_km.toFixed(1)} km` +
+        (r.water_checked ? ` · waterpunten via ${esc(r.source)}` : "") + `</small>` +
+        Checks.cards(r) +
         Weather.panel(r) +
         `<span class="dl">` +
         `<a href="/api/download/${item.original_job_id}?name=${encodeURIComponent(item.original_filename)}" download>origineel</a>` +
@@ -171,16 +162,7 @@
     el("results").hidden = false;
   }
 
-  Weather.init();
-
-  // Datumkiezer alleen tonen als de controle is aangevinkt.
-  const roadworksBox = el("roadworks");
-  const dateWrap = el("roadworks-date-wrap");
-  if (roadworksBox && dateWrap) {
-    const sync = () => { dateWrap.hidden = !roadworksBox.checked; };
-    roadworksBox.addEventListener("change", sync);
-    sync();
-  }
+  Checks.init(el("process-btn"));
 
   el("refresh-routes").addEventListener("click", () => loadRoutes(true));
 
@@ -188,6 +170,10 @@
     const ids = selectedIds();
     if (!ids.length) {
       setStatus("Selecteer minimaal één route.", true);
+      return;
+    }
+    if (!Checks.anySelected()) {
+      setStatus("Kies minimaal één controle.", true);
       return;
     }
     el("process-btn").disabled = true;
@@ -198,18 +184,11 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           route_ids: ids,
-          radius: Number(el("radius").value),
-          source: el("source").value,
-          roadworks: Boolean(roadworksBox && roadworksBox.checked),
-          ride_date:
-            roadworksBox && roadworksBox.checked && el("ride_date")
-              ? el("ride_date").value
-              : null,
-          legality: Boolean(el("legality") && el("legality").checked),
-          ...Weather.params(),
+          ...Checks.params(),
         }),
       });
       renderResults(items);
+      el("results").scrollIntoView({ behavior: "smooth", block: "start" });
       const ok = items.filter((i) => !i.error).length;
       setStatus(`Klaar: ${ok} van ${items.length} route(s) verwerkt.`, ok === 0);
     } catch (err) {

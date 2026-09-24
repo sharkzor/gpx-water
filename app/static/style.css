@@ -307,3 +307,32 @@ code {
   color: var(--muted);
 }
 .rain-list { margin: .3rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
+
+/* Keuze van controles en statuskaartjes */
+.checks-title {
+  margin: 1rem 0 0;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.checks-title .muted { text-transform: none; font-weight: 400; }
+.option-group:has(input[data-check]:checked) { border-color: #0284c7; background: #f5fbff; }
+.checks-hint { font-size: .82rem; color: #b45309; margin: .4rem 0 0; }
+.check-cards { display: grid; gap: .4rem; margin: .6rem 0; }
+.check-card {
+  display: flex;
+  gap: .6rem;
+  align-items: flex-start;
+  padding: .5rem .7rem;
+  border-radius: 6px;
+  border-left: 4px solid #9ca3af;
+  background: #f3f4f6;
+}
+.check-card .icon { font-size: 1.1rem; line-height: 1.3rem; }
+.check-card strong { display: block; }
+.check-card small { display: block; color: #374151; }
+.check-card.ok { border-left-color: #16a34a; background: #f0fdf4; }
+.check-card.warn { border-left-color: #ea580c; background: #fff7ed; }
+.check-card.bad { border-left-color: #dc2626; background: #fef2f2; }
+.check-card.all-ok { border-left-color: #16a34a; background: #dcfce7; align-items: center; }

@@ -14,6 +14,7 @@ from app.models.schemas import (
     ProcessResult,
     RainSegmentOut,
     RoadWorkOut,
+    RouteStats,
     WaterPointOut,
     WeatherSampleOut,
 )
@@ -158,8 +159,13 @@ def process_gpx(
     ride_date: date | None = None,
     check_legality: bool = False,
     weather: weather_service.WeatherRequest | None = None,
+    check_water: bool = True,
 ) -> ProcessResult:
-    """Verwerk een GPX-upload en schrijf de nieuwe GPX naar de tijdelijke map."""
+    """Verwerk een GPX en schrijf de nieuwe GPX naar de tijdelijke map.
+
+    Elke controle is optioneel; zonder waterpunten wordt alleen de route
+    gecontroleerd en bevat de GPX alleen de gevonden aandachtspunten.
+    """
     settings = get_settings()
     settings.ensure_dirs()
 
@@ -167,24 +173,26 @@ def process_gpx(
     route_points = gpx_service.extract_route_points(gpx)
     coords = [(p.lat, p.lon) for p in route_points]
     share = nl_share(coords)
-    source = _pick_source(share, requested_source)
+    source = _pick_source(share, requested_source) if check_water else ""
     logger.info(
-        "Route '%s': %d punten, %.0f%% in NL, bron=%s, radius=%d m",
+        "Route '%s': %d punten, %.0f%% in NL, waterpunten=%s, bron=%s, radius=%d m",
         filename,
         len(coords),
         share * 100,
-        source,
+        check_water,
+        source or "-",
         radius_m,
     )
 
-    if source == waterpoints_nl.SOURCE_NAME:
-        candidates = waterpoints_nl.load_water_points_near(coords, radius_m + 1000)
-    else:
-        candidates = osm_service.load_water_points_near(coords, radius_m)
-
     index = route_service.RouteIndex(route_points)
-    matched = route_service.attach_to_route(index, candidates, radius_m)
-    matched = route_service.deduplicate(matched, index.projection)
+    matched: list = []
+    if check_water:
+        if source == waterpoints_nl.SOURCE_NAME:
+            candidates = waterpoints_nl.load_water_points_near(coords, radius_m + 1000)
+        else:
+            candidates = osm_service.load_water_points_near(coords, radius_m)
+        matched = route_service.attach_to_route(index, candidates, radius_m)
+        matched = route_service.deduplicate(matched, index.projection)
 
     road_works: list = []
     roadworks_error: str | None = None
@@ -209,7 +217,14 @@ def process_gpx(
         weather_error = "Regencontrole is uitgeschakeld."
 
     has_elevation = any(p.ele is not None for p in route_points)
-    stats = route_service.build_stats(index, matched, has_elevation)
+    if check_water:
+        stats = route_service.build_stats(index, matched, has_elevation)
+    else:
+        stats = RouteStats(
+            total_distance_km=round(index.total_distance_m / 1000.0, 2),
+            water_point_count=0,
+            has_elevation=has_elevation,
+        )
 
     job_id = uuid.uuid4().hex
     xml = gpx_service.build_output_gpx(
@@ -221,10 +236,11 @@ def process_gpx(
     min_lat, min_lon, max_lat, max_lon = bounding_box(coords)
     return ProcessResult(
         job_id=job_id,
-        filename=_output_filename(filename),
+        filename=_output_filename(filename, check_water),
         source=source,
         radius_m=radius_m,
         nl_share=round(share, 3),
+        water_checked=check_water,
         stats=stats,
         route=[[p.lat, p.lon] for p in route_points],
         water_points=[
@@ -333,7 +349,13 @@ def _weather_fields(
     return fields
 
 
-def _output_filename(filename: str) -> str:
+def _output_filename(filename: str, check_water: bool = True) -> str:
     stem = Path(filename or "route").stem or "route"
     safe = "".join(c for c in stem if c.isalnum() or c in ("-", "_", " ")).strip()
-    return f"{safe or 'route'}-water.gpx"
+    suffix = "-water" if check_water else "-gecontroleerd"
+    return f"{safe or 'route'}{suffix}.gpx"
+
+
+def output_suffix(check_water: bool) -> str:
+    """Achtervoegsel voor Strava/routeboek: met of zonder waterpunten."""
+    return "_waterpunten" if check_water else "_gecontroleerd"

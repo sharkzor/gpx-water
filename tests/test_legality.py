@@ -244,12 +244,12 @@ def test_buitenlandse_route_wordt_niet_gecontroleerd(client: TestClient, monkeyp
 
 
 def test_pagina_toont_optie(client: TestClient) -> None:
-    assert "Controleer op verboden paden" in client.get("/").text
+    assert "Verboden paden (alleen Nederland)" in client.get("/").text
 
 
 def test_uitschakelen_via_config(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(get_settings(), "legality_enabled", False)
-    assert "Controleer op verboden paden" not in client.get("/").text
+    assert "Verboden paden (alleen Nederland)" not in client.get("/").text
     assert client.get("/api/osm/status").status_code == 404
 
 

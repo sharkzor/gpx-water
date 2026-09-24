@@ -136,6 +136,8 @@ class ProcessResult(BaseModel):
     source: str
     radius_m: int
     nl_share: float
+    # False als alleen de route is gecontroleerd (geen waterpunten gezocht)
+    water_checked: bool = True
     stats: RouteStats
     route: list[list[float]]
     water_points: list[WaterPointOut]

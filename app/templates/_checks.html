@@ -1,0 +1,60 @@
+{# Gedeelde keuze van controles voor upload-, Strava- en routeboekpagina. #}
+<p class="checks-title">Wat wil je doen? <span class="muted">(kies er minimaal één)</span></p>
+
+<fieldset class="option-group">
+  <label class="check">
+    <input type="checkbox" id="water" name="water" data-check>
+    💧 Waterpunten toevoegen
+  </label>
+  <div id="water-wrap" hidden>
+    <label for="radius">Zoekradius</label>
+    <select id="radius" name="radius">
+      {% for r in radii %}
+      <option value="{{ r }}" {% if r == default_radius %}selected{% endif %}>{{ r }} meter</option>
+      {% endfor %}
+    </select>
+
+    <label for="source">Databron</label>
+    <select id="source" name="source">
+      <option value="auto" selected>Automatisch (NL &gt; 80% → drinkwaterpunten.nl)</option>
+      <option value="nl">drinkwaterpunten.nl</option>
+      <option value="osm">OpenStreetMap</option>
+    </select>
+  </div>
+</fieldset>
+
+{% if roadworks_enabled %}
+<fieldset class="option-group">
+  <label class="check">
+    <input type="checkbox" id="roadworks" name="roadworks" data-check>
+    ⚠️ Wegwerkzaamheden (alleen Nederland)
+  </label>
+  <div id="roadworks-date-wrap" hidden>
+    <label for="ride_date">Datum van de rit</label>
+    <input type="date" id="ride_date" name="ride_date" value="{{ today }}">
+    <p class="hint">
+      Bron: NDW/Melvin. Gemeenten melden hier hun werkzaamheden;
+      de dekking is niet volledig.
+    </p>
+  </div>
+</fieldset>
+{% endif %}
+
+{% if legality_enabled %}
+<fieldset class="option-group">
+  <label class="check">
+    <input type="checkbox" id="legality" name="legality" data-check>
+    ⛔ Verboden paden (alleen Nederland)
+  </label>
+  <div id="legality-wrap" hidden>
+    <p class="hint">
+      Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
+      niet (zonder meer) mag. Bron: OpenStreetMap.
+      {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
+      na de eerste start een kwartier duren.</strong>{% endif %}
+    </p>
+  </div>
+</fieldset>
+{% endif %}
+
+{% include "_weather_option.html" %}

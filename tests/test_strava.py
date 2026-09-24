@@ -55,7 +55,8 @@ def test_strava_page_renders(client: TestClient) -> None:
     response = client.get("/strava")
     assert response.status_code == 200
     assert "Verbind met Strava" in response.text
-    assert "Maak waterpunten GPX" in response.text
+    assert "Controleer route" in response.text
+    assert "_checks" not in response.text and 'id="water"' in response.text
 
 
 def test_navigation_on_upload_page(client: TestClient) -> None:
@@ -427,7 +428,7 @@ def _stub_route(monkeypatch, sample_gpx: str, route_id: str, name: str = "Testri
 
 def test_strava_pagina_toont_wegwerkzaamheden_optie(client: TestClient) -> None:
     page = client.get("/strava")
-    assert "Controleer op wegwerkzaamheden" in page.text
+    assert "Wegwerkzaamheden (alleen Nederland)" in page.text
     assert 'type="date"' in page.text
 
 
@@ -527,7 +528,7 @@ def test_strava_process_geeft_verboden_paden_door(
 
 
 def test_strava_pagina_toont_verboden_paden_optie(client: TestClient) -> None:
-    assert "Controleer op verboden paden" in client.get("/strava").text
+    assert "Verboden paden (alleen Nederland)" in client.get("/strava").text
 
 
 def test_strava_pagina_toont_zoekveld(client: TestClient) -> None:
