@@ -4,10 +4,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 
 SourceName = Literal["drinkwaterpunten.nl", "openstreetmap"]
+
+
+def safe_http_url(value: str | None) -> str | None:
+    """Laat alleen http(s)-links door; bijv. ``javascript:`` uit OSM-tags valt weg."""
+    if not value:
+        return None
+    value = value.strip()
+    if any(ord(c) < 0x20 for c in value):
+        return None
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return None
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+        return None
+    return value
 
 
 @dataclass(slots=True)
@@ -36,6 +53,9 @@ class WaterPoint:
     distance_to_route_m: float = 0.0
     along_route_km: float = 0.0
     extra: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.website = safe_http_url(self.website)
 
 
 @dataclass(slots=True)

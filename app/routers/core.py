@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.config import get_settings
@@ -17,6 +19,28 @@ from app.web import templates
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+
+
+def require_admin(
+    authorization: str | None = Header(default=None),
+    x_admin_token: str | None = Header(default=None),
+) -> None:
+    """Alleen met ADMIN_TOKEN (Bearer of X-Admin-Token); zonder token staat beheer uit.
+
+    Deze endpoints starten zware downloads; de achtergrondverversing doet dit
+    al vanzelf, dus op een publieke instantie hoeven ze niet open te staan.
+    """
+    expected = settings.admin_token
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Beheer-endpoints zijn uitgeschakeld; stel ADMIN_TOKEN in om ze te gebruiken.",
+        )
+    given = x_admin_token or ""
+    if authorization and authorization.lower().startswith("bearer "):
+        given = authorization[7:].strip()
+    if not hmac.compare_digest(given.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Ongeldig of ontbrekend beheertoken")
 
 
 def validate_options(radius: int | None, source: str) -> int:
@@ -206,7 +230,9 @@ async def process(
             status_code=413,
             detail=f"Bestand is groter dan {settings.max_upload_mb} MB",
         )
-    return run_processing(
+    # Verwerken doet blokkerende HTTP-verzoeken; buiten de event loop houden.
+    return await run_in_threadpool(
+        run_processing,
         raw, file.filename or "route.gpx", radius_m, source, roadworks, day, legality,
         weather_request, water,
     )
@@ -225,8 +251,8 @@ async def download(job_id: str, name: str | None = None) -> FileResponse:
     )
 
 
-@router.post("/api/roadworks/refresh")
-async def refresh_roadworks() -> JSONResponse:
+@router.post("/api/roadworks/refresh", dependencies=[Depends(require_admin)])
+def refresh_roadworks() -> JSONResponse:
     """Forceer het verversen van de NDW-wegwerkzaamheden (duurt ~1 minuut)."""
     if not settings.roadworks_enabled:
         raise HTTPException(
@@ -239,8 +265,8 @@ async def refresh_roadworks() -> JSONResponse:
     return JSONResponse({"status": "ok", "count": len(works)})
 
 
-@router.post("/api/cache/refresh")
-async def refresh_cache() -> JSONResponse:
+@router.post("/api/cache/refresh", dependencies=[Depends(require_admin)])
+def refresh_cache() -> JSONResponse:
     """Forceer het verversen van de Nederlandse drinkwaterpunten-cache."""
     try:
         points = waterpoints_nl.load_water_points(force_refresh=True)
@@ -271,15 +297,15 @@ def _osm_status() -> dict[str, object]:
 
 
 @router.get("/api/osm/status")
-async def osm_status() -> JSONResponse:
+def osm_status() -> JSONResponse:
     """Status van de lokale wegenkaart voor de controle op verboden paden."""
     if not settings.legality_enabled:
         raise HTTPException(status_code=404, detail="Controle op verboden paden is uitgeschakeld")
     return JSONResponse(_osm_status())
 
 
-@router.post("/api/osm/refresh")
-async def osm_refresh() -> JSONResponse:
+@router.post("/api/osm/refresh", dependencies=[Depends(require_admin)])
+def osm_refresh() -> JSONResponse:
     """Bouw de wegenkaart opnieuw op (duurt enkele minuten, op de achtergrond)."""
     if not settings.legality_enabled:
         raise HTTPException(status_code=404, detail="Controle op verboden paden is uitgeschakeld")

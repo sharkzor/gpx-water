@@ -174,6 +174,18 @@ class Settings:
         self.session_cookie: str = os.getenv("SESSION_COOKIE", "gpxw_session")
         self.session_ttl_seconds: int = _int("SESSION_TTL_SECONDS", 30 * 24 * 3600)
         self.secret_key: str = os.getenv("SECRET_KEY", "").strip()
+        # Het vaste Strava-token (STRAVA_REFRESH_TOKEN) is van de eigenaar en
+        # geldt alleen voor bezoekers uit deze netwerken; "*" = iedereen.
+        self.strava_env_token_networks: tuple[str, ...] = tuple(
+            n.strip()
+            for n in os.getenv(
+                "STRAVA_ENV_TOKEN_NETWORKS",
+                "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7",
+            ).split(",")
+            if n.strip()
+        )
+        # Beheer-endpoints (/api/*/refresh) vereisen dit token; leeg = uitgeschakeld.
+        self.admin_token: str = os.getenv("ADMIN_TOKEN", "").strip()
         self.cookie_secure: bool = os.getenv("COOKIE_SECURE", "false").lower() in (
             "1",
             "true",

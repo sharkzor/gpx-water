@@ -244,7 +244,10 @@ def test_uitschakelen_via_config(client: TestClient, sample_gpx: str, monkeypatc
     )
     assert response.status_code == 200
     assert "uitgeschakeld" in response.json()["roadworks_error"]
-    assert client.post("/api/roadworks/refresh").status_code == 404
+    from app.routers import core
+
+    monkeypatch.setattr(core.settings, "admin_token", "geheim")
+    assert client.post("/api/roadworks/refresh", headers={"X-Admin-Token": "geheim"}).status_code == 404
 
     page = client.get("/")
     assert "Wegwerkzaamheden (alleen Nederland)" not in page.text
@@ -257,8 +260,18 @@ def test_pagina_toont_optie_en_datum(client: TestClient) -> None:
     assert date.today().isoformat() in page.text
 
 
-def test_refresh_endpoint(client: TestClient) -> None:
-    response = client.post("/api/roadworks/refresh")
+def test_refresh_endpoint(monkeypatch, client: TestClient) -> None:
+    from app.routers import core
+
+    monkeypatch.setattr(core.settings, "admin_token", "")
+    assert client.post("/api/roadworks/refresh").status_code == 403
+
+    monkeypatch.setattr(core.settings, "admin_token", "geheim")
+    assert client.post("/api/roadworks/refresh").status_code == 401
+    assert client.post(
+        "/api/roadworks/refresh", headers={"X-Admin-Token": "fout"}
+    ).status_code == 401
+    response = client.post("/api/roadworks/refresh", headers={"Authorization": "Bearer geheim"})
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "count": 2}
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
+import secrets
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -47,6 +49,8 @@ def _require_feature() -> None:
 router = APIRouter(dependencies=[Depends(_require_feature)])
 
 _STATE_MAX_AGE = 600
+# Kortlevende cookie die de OAuth-state aan de browser bindt die de koppeling startte.
+_NONCE_COOKIE = "gpxw_oauth_nonce"
 
 
 def _serializer(salt: str) -> URLSafeTimedSerializer:
@@ -75,10 +79,14 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
     )
 
 
+def _env_allowed(request: Request) -> bool:
+    return strava_service.env_token_allowed(request.client.host if request.client else None)
+
+
 def _require_session(request: Request) -> tuple[str, dict]:
     session_id = _read_session_id(request) or ""
     try:
-        return session_id, strava_service.valid_session(session_id)
+        return session_id, strava_service.valid_session(session_id, _env_allowed(request))
     except StravaAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except StravaError as exc:
@@ -108,7 +116,7 @@ async def strava_page(request: Request) -> HTMLResponse:
 
 @router.get("/api/strava/status", response_model=StravaStatus)
 def status(request: Request) -> StravaStatus:
-    found = strava_service.stored_session(_read_session_id(request))
+    found = strava_service.stored_session(_read_session_id(request), _env_allowed(request))
     session = found[1] if found else None
     athlete = (session or {}).get("athlete") or None
     return StravaStatus(
@@ -126,13 +134,21 @@ def status(request: Request) -> StravaStatus:
 @router.get("/strava/connect")
 def connect(request: Request) -> RedirectResponse:
     """Start de OAuth-koppeling met Strava."""
-    session_id = _read_session_id(request) or token_store.new_session_id()
+    nonce = secrets.token_urlsafe(32)
     try:
-        url = strava_service.authorize_url(_serializer("oauth-state").dumps(session_id))
+        url = strava_service.authorize_url(_serializer("oauth-state").dumps(nonce))
     except StravaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     response = RedirectResponse(url, status_code=307)
-    _set_session_cookie(response, session_id)
+    response.set_cookie(
+        _NONCE_COOKIE,
+        nonce,
+        max_age=_STATE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        path="/strava/callback",
+    )
     return response
 
 
@@ -147,18 +163,19 @@ def callback(
     """Callback-URL die je in de Strava-app instelt als 'Authorization Callback Domain'."""
     if error:
         logger.warning("Strava-koppeling geweigerd: %s", error)
-        return RedirectResponse(f"/strava?error={error}", status_code=303)
+        return RedirectResponse("/strava?error=geweigerd", status_code=303)
     if not code or not state:
         return RedirectResponse("/strava?error=ontbrekende_code", status_code=303)
 
+    # De state moet horen bij déze browser: anders kan iemand een eigen
+    # koppel-link laten openen en zo andermans tokens aan zijn sessie hangen.
     try:
-        session_id = _serializer("oauth-state").loads(state, max_age=_STATE_MAX_AGE)
+        nonce = _serializer("oauth-state").loads(state, max_age=_STATE_MAX_AGE)
     except (BadSignature, SignatureExpired):
+        nonce = None
+    cookie_nonce = request.cookies.get(_NONCE_COOKIE)
+    if not nonce or not cookie_nonce or not hmac.compare_digest(str(nonce), cookie_nonce):
         logger.warning("Ongeldige OAuth-state ontvangen")
-        return RedirectResponse("/strava?error=ongeldige_state", status_code=303)
-
-    cookie_session = _read_session_id(request)
-    if cookie_session and cookie_session != session_id:
         return RedirectResponse("/strava?error=ongeldige_state", status_code=303)
 
     try:
@@ -169,10 +186,15 @@ def callback(
 
     if scope and not session.get("scope"):
         session["scope"] = scope
+    old_session = _read_session_id(request)
+    if old_session:
+        token_store.delete(old_session)
+    session_id = token_store.new_session_id()
     token_store.put(session_id, session)
 
     response = RedirectResponse("/strava?connected=1", status_code=303)
     _set_session_cookie(response, session_id)
+    response.delete_cookie(_NONCE_COOKIE, path="/strava/callback")
     return response
 
 

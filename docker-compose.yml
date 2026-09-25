@@ -6,11 +6,26 @@ services:
     restart: unless-stopped
     ports:
       - "8087:8080"
+    # Minimale rechten: root is alleen nodig om ./data te chownen en daarna
+    # direct naar appuser te wisselen (zie entrypoint.sh).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
     volumes:
       - ./data:/app/data
     environment:
       PORT: 8080
       LOG_LEVEL: INFO
+      # IP-adressen van een reverse proxy waarvan X-Forwarded-For vertrouwd wordt
+      FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
       DATA_DIR: /app/data
       DEFAULT_RADIUS_M: 250
       DEDUPE_DISTANCE_M: 50
@@ -52,6 +67,10 @@ services:
       # Leeg laten = automatisch gegenereerd in ./data/secret.key
       SECRET_KEY: "${SECRET_KEY:-}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # Wie het vaste Strava-token (STRAVA_REFRESH_TOKEN) mag gebruiken
+      STRAVA_ENV_TOKEN_NETWORKS: "${STRAVA_ENV_TOKEN_NETWORKS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7}"
+      # Token voor /api/*/refresh; leeg = beheer-endpoints uit
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
       # Routeboek.cc: routes van een clubpagina scrapen (geen officiële API)
       ROUTEBOEK_ENABLED: "${ROUTEBOEK_ENABLED:-true}"
       ROUTEBOEK_BASE_URL: "${ROUTEBOEK_BASE_URL:-https://routeboek.cc}"

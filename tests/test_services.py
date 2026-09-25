@@ -192,3 +192,13 @@ def test_output_stays_valid_xml_with_special_characters() -> None:
     assert reparsed.waypoints[0].link == "https://x.nl/?a=1&b=2"
     assert reparsed.link == "https://a.nl/?x=1&y=2"
     assert reparsed.waypoints[0].comment == 'Caf<e> & "co"'
+
+
+def test_website_alleen_http_links() -> None:
+    from app.models.schemas import WaterPoint, safe_http_url
+
+    assert safe_http_url("https://example.org/tap") == "https://example.org/tap"
+    for bad in ("javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,x",
+                "java\tscript:alert(1)", "//evil.example", "https://", "ftp://x.nl"):
+        assert safe_http_url(bad) is None, bad
+    assert WaterPoint(lat=52, lon=5, website="javascript:alert(1)").website is None

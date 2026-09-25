@@ -4,13 +4,16 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     DATA_DIR=/app/data \
-    PORT=8080
+    PORT=8080 \
+    FORWARDED_ALLOW_IPS=127.0.0.1
 
 WORKDIR /app
 
 # osmium-tool bouwt de lokale wegenkaart voor de controle op verboden paden
 # (zie app/services/osm_index.py).
+# upgrade: Debian-beveiligingsupdates meenemen die nog niet in het basisimage zitten.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends osmium-tool \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,4 +34,6 @@ HEALTHCHECK --interval=60s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','8080')+'/api/health').read()"
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips '*'"]
+# X-Forwarded-For alleen geloven van een vertrouwde reverse proxy (FORWARDED_ALLOW_IPS),
+# anders kan elke bezoeker zich als een ander IP-adres voordoen.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\" --no-server-header"]

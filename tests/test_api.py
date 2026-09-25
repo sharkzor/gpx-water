@@ -113,3 +113,13 @@ def test_radius_options_and_default(client: TestClient, sample_gpx: str) -> None
     # zonder expliciete radius wordt de standaard (250 m) gebruikt
     fallback = client.post("/api/process", files={"file": ("route.gpx", sample_gpx)})
     assert fallback.json()["radius_m"] == 250
+
+
+def test_beveiligingsheaders_en_lokale_leaflet(client: TestClient) -> None:
+    response = client.get("/")
+    csp = response.headers["Content-Security-Policy"]
+    assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert "unpkg.com" not in response.text
+    assert client.get("/static/vendor/leaflet/leaflet.js").status_code == 200
+    assert "Content-Security-Policy" not in client.get("/docs").headers

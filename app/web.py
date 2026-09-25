@@ -12,7 +12,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 #: Versie van de applicatie; wordt aan statische bestanden gehangen zodat
 #: browsers na een update nooit een oude CSS/JS uit hun cache gebruiken.
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.9.1"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["app_version"] = APP_VERSION

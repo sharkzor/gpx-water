@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 from typing import Any
@@ -158,21 +159,43 @@ def _ensure_athlete(session_id: str, session: dict[str, Any]) -> dict[str, Any]:
     return session
 
 
-def stored_session(session_id: str | None) -> tuple[str, dict[str, Any]] | None:
+def env_token_allowed(client_host: str | None) -> bool:
+    """Mag deze bezoeker het vaste token van de eigenaar gebruiken?"""
+    networks = get_settings().strava_env_token_networks
+    if "*" in networks:
+        return True
+    try:
+        address = ipaddress.ip_address(client_host or "")
+    except ValueError:
+        return False
+    for network in networks:
+        try:
+            if address in ipaddress.ip_network(network, strict=False):
+                return True
+        except ValueError:
+            logger.warning("Ongeldig netwerk in STRAVA_ENV_TOKEN_NETWORKS: %s", network)
+    return False
+
+
+def stored_session(
+    session_id: str | None, allow_env: bool = True
+) -> tuple[str, dict[str, Any]] | None:
     """Geef de opgeslagen sessie van de browser, of anders die uit de environment."""
-    if session_id:
+    if session_id and session_id != ENV_SESSION_ID:
         session = token_store.get(session_id)
         if session and session.get("access_token"):
             return session_id, session
+    if not allow_env:
+        return None
     env = env_session()
     if env:
         return ENV_SESSION_ID, env
     return None
 
 
-def valid_session(session_id: str) -> dict[str, Any]:
+def valid_session(session_id: str, allow_env: bool = True) -> dict[str, Any]:
     """Geef een sessie met geldig access token; ververst automatisch."""
-    found = stored_session(session_id)
+    found = stored_session(session_id, allow_env)
     if not found:
         raise StravaAuthError("Nog niet met Strava verbonden.")
     session_id, session = found

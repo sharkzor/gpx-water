@@ -41,12 +41,21 @@
     }[c]));
   }
 
+  /* Extra vangnet naast de server: alleen http(s)-links klikbaar maken. */
+  function safeUrl(value) {
+    try {
+      return Boolean(value) && ["http:", "https:"].includes(new URL(value).protocol);
+    } catch (err) {
+      return false;
+    }
+  }
+
   function popupHtml(wp) {
     const rows = [`<strong>💧 ${esc(wp.name || "Drinkwaterpunt")}</strong>`];
     rows.push(`km ${wp.along_route_km.toFixed(1)} · ${Math.round(wp.distance_to_route_m)} m van route`);
     if (wp.operator) rows.push(`Beheerder: ${esc(wp.operator)}`);
     if (wp.opening_hours) rows.push(`Open: ${esc(wp.opening_hours)}`);
-    if (wp.website) rows.push(`<a href="${esc(wp.website)}" target="_blank" rel="noopener">website</a>`);
+    if (safeUrl(wp.website)) rows.push(`<a href="${esc(wp.website)}" target="_blank" rel="noopener noreferrer">website</a>`);
     rows.push(`<em>${esc(wp.source)}</em>`);
     return rows.join("<br>");
   }

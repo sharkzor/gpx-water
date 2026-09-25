@@ -416,8 +416,10 @@ download, ook niet op een instantie die weken niemand heeft gebruikt. Zet
 verzoek. Verversen kan ook handmatig:
 
 ```bash
-curl -X POST http://localhost:8080/api/roadworks/refresh
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/api/roadworks/refresh
 ```
+
+(alleen als `ADMIN_TOKEN` is ingesteld, zie [Beveiliging](#beveiliging)).
 
 Valt NDW uit, dan gebruikt de app de vorige cache en gaat de verwerking van
 drinkwaterpunten gewoon door.
@@ -523,7 +525,7 @@ Status en handmatig opbouwen:
 
 ```bash
 curl http://localhost:8080/api/osm/status
-curl -X POST http://localhost:8080/api/osm/refresh
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/api/osm/refresh
 ```
 
 Zet `LEGALITY_ENABLED=false` om de functie volledig uit te zetten; er wordt
@@ -668,6 +670,9 @@ Tip: gebruikt jouw firmware liever een ander symbool of geen emoji, pas dan
 | `STRAVA_MAX_ROUTES` | `100` | Maximum aantal op te halen routes |
 | `SECRET_KEY` | – | Sleutel voor cookies en tokenversleuteling (leeg = auto) |
 | `COOKIE_SECURE` | `false` | Zet op `true` achter HTTPS |
+| `ADMIN_TOKEN` | – | Token voor de beheer-endpoints `/api/*/refresh`; leeg = uitgeschakeld |
+| `STRAVA_ENV_TOKEN_NETWORKS` | privé-netwerken | Netwerken (CIDR) die het vaste token uit `STRAVA_REFRESH_TOKEN` mogen gebruiken; `*` = iedereen |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | IP's/netwerken van de reverse proxy waarvan `X-Forwarded-For` vertrouwd wordt |
 | `SESSION_TTL_SECONDS` | `2592000` | Levensduur van een sessie (30 dagen) |
 | `WEATHER_ENABLED` | `true` | Regencontrole aan/uit |
 | `DEFAULT_SPEED_KMH` | `30` | Voorgestelde gemiddelde snelheid |
@@ -697,8 +702,9 @@ Zie `.env.example`. Een `.env` in de projectmap wordt automatisch geladen.
 | `/` | GET | Webinterface |
 | `/api/process` | POST | multipart: `file`, `water` (standaard `true`), `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
 | `/api/download/{job_id}` | GET | Gegenereerde GPX |
-| `/api/cache/refresh` | POST | Forceer verversen NL-dataset |
-| `/api/roadworks/refresh` | POST | Forceer verversen NDW-wegwerkzaamheden |
+| `/api/cache/refresh` | POST | Forceer verversen NL-dataset (beheertoken) |
+| `/api/roadworks/refresh` | POST | Forceer verversen NDW-wegwerkzaamheden (beheertoken) |
+| `/api/osm/refresh` | POST | Wegenkaart opnieuw opbouwen (beheertoken) |
 | `/api/routeboek/routes` | GET | Routes van de routeboek.cc-clubpagina (`?refresh=1` forceert een nieuwe scrape) |
 | `/api/routeboek/process` | POST | JSON: `route_ids`, `water`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure`, `speed_kmh` → resultaat per route |
 | `/strava` | GET | Pagina met Strava-routes |
@@ -760,6 +766,7 @@ app/
     token_store.py         versleutelde tokenopslag
   templates/{index.html,strava.html,routeboek.html,_checks.html,_weather_option.html}
   static/{style.css,app.js,strava.js,routeboek.js,checks.js,legality.js,weather.js}
+  static/vendor/leaflet/   Leaflet 1.9.4 (lokaal, BSD-2)
 tests/
 Dockerfile, entrypoint.sh, docker-compose.yml, requirements.txt
 ```
@@ -786,6 +793,47 @@ ontdubbelen, statistiek/waarschuwing, genereren en teruglezen van de nieuwe GPX,
 alle API-endpoints, en de volledige Strava-flow (OAuth met state-controle,
 versleutelde tokenopslag, tokenvernieuwing, routelijst, batchverwerking en
 foutafhandeling per route).
+
+---
+
+## Beveiliging
+
+- **Beheer-endpoints** (`/api/cache/refresh`, `/api/roadworks/refresh`,
+  `/api/osm/refresh`) starten zware downloads en staan standaard **uit**. De
+  achtergrondverversing houdt alles vanzelf actueel. Wil je ze toch gebruiken,
+  zet dan `ADMIN_TOKEN` (bijvoorbeeld `openssl rand -hex 32`) en stuur het mee
+  als `Authorization: Bearer <token>` of `X-Admin-Token: <token>`.
+- **Vast Strava-token:** met `STRAVA_REFRESH_TOKEN` gebruikt de app jouw
+  account voor elke bezoeker zonder eigen koppeling. Daarom geldt dat token
+  alleen voor bezoekers uit `STRAVA_ENV_TOKEN_NETWORKS` (standaard alleen
+  privé-netwerken). Zet een instantie met zo'n token **nooit** achter een
+  publieke reverse proxy: de proxy zit zelf in je privé-netwerk, waardoor
+  iedereen via de proxy alsnog binnenkomt. Publiek = `STRAVA_ENABLED=false`
+  (zie [Publieke installatie](#publieke-installatie-naast-je-eigen-instantie)).
+- **Strava OAuth:** de `state` is gebonden aan een kortlevende cookie van de
+  browser die de koppeling startte, en na het koppelen krijgt de browser een
+  nieuwe sessie. Zo kan niemand een eigen koppel-link door een ander laten
+  afronden om diens tokens te bemachtigen.
+- **Reverse proxy:** `X-Forwarded-For` wordt alleen geloofd van
+  `FORWARDED_ALLOW_IPS` (standaard `127.0.0.1`). Achter Nginx Proxy Manager of
+  Traefik vul je daar het IP of netwerk van de proxy in.
+- **Browser:** alle scripts, inclusief Leaflet (`app/static/vendor/leaflet`,
+  BSD-2), komen van de eigen server. Een strikte Content-Security-Policy
+  (`script-src 'self'`, `frame-ancestors 'none'`) en headers als `nosniff`
+  worden op elke pagina meegestuurd. Externe tekst (namen van waterpunten,
+  meldingen, routenamen) wordt altijd ge-escaped; links uit OpenStreetMap
+  worden alleen overgenomen als het `http(s)`-adressen zijn.
+- **Invoer:** GPX wordt gelezen met de standaard XML-parser zonder externe
+  entiteiten, uploads zijn begrensd (`MAX_UPLOAD_MB`), job-id's zijn willekeurig
+  en alleen alfanumeriek, SQLite-queries zijn geparametriseerd en osmium wordt
+  zonder shell aangeroepen.
+- **Container:** draait als `appuser` (uid 10001) met `cap_drop: ALL` (alleen
+  de rechten om `./data` te chownen en van gebruiker te wisselen),
+  `no-new-privileges` en een pids-limiet. Het image neemt bij elke build de
+  Debian-beveiligingsupdates mee (`apt-get upgrade`); bouw periodiek opnieuw
+  met `docker compose build --pull`.
+- **Controleren:** `pip-audit -r requirements.txt` voor Python-pakketten en
+  bijvoorbeeld `trivy image gpx-waterpoints:latest` voor het image.
 
 ---
 

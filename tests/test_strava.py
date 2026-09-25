@@ -16,7 +16,8 @@ from app.services import gpx_service, strava_service, token_store, waterpoints_n
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    # Bezoeker vanaf het thuisnetwerk: mag het vaste token uit de environment gebruiken.
+    return TestClient(app, client=("192.168.1.20", 50000))
 
 
 @pytest.fixture(autouse=True)
@@ -115,9 +116,31 @@ def test_callback_rejects_tampered_state(client: TestClient, monkeypatch) -> Non
     assert client.get("/api/strava/status").json()["connected"] is False
 
 
+def test_callback_weigert_state_uit_andere_browser(monkeypatch) -> None:
+    """Login-CSRF: een aanvaller mag zijn koppel-link niet door een slachtoffer laten afronden."""
+    monkeypatch.setattr(strava_service, "_post_token", lambda payload: _fake_token())
+    attacker, victim = TestClient(app), TestClient(app)
+    redirect = attacker.get("/strava/connect", follow_redirects=False)
+    state = parse_qs(urlparse(redirect.headers["location"]).query)["state"][0]
+
+    done = victim.get(f"/strava/callback?code=victim&state={state}", follow_redirects=False)
+    assert done.headers["location"] == "/strava?error=ongeldige_state"
+    assert attacker.get("/api/strava/status").json()["connected"] is False
+    assert victim.get("/api/strava/status").json()["connected"] is False
+
+
+def test_callback_geeft_nieuwe_sessie(client: TestClient, monkeypatch) -> None:
+    cookie = get_settings().session_cookie
+    client.cookies.set(cookie, "oud")
+    _connect(client, monkeypatch)
+    values = [c.value for c in client.cookies.jar if c.name == cookie]
+    assert any(v != "oud" for v in values)
+    assert client.get("/api/strava/status").json()["connected"] is True
+
+
 def test_callback_handles_denied_access(client: TestClient) -> None:
     response = client.get("/strava/callback?error=access_denied", follow_redirects=False)
-    assert response.headers["location"] == "/strava?error=access_denied"
+    assert response.headers["location"] == "/strava?error=geweigerd"
 
 
 def test_routes_require_connection(client: TestClient) -> None:
@@ -327,6 +350,22 @@ def test_env_token_connects_without_oauth(client: TestClient, monkeypatch) -> No
     assert status["athlete"]["firstname"] == "Env"
 
     token_store.delete(strava_service.ENV_SESSION_ID)
+
+
+def test_env_token_niet_voor_bezoekers_van_buiten(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "strava_refresh_token", "refresh-uit-env")
+    monkeypatch.setattr(settings, "strava_access_token", "access-env")
+    outsider = TestClient(app, client=("203.0.113.7", 40000))
+    assert outsider.get("/api/strava/status").json()["connected"] is False
+    assert outsider.get("/api/strava/routes").status_code == 401
+
+    monkeypatch.setattr(settings, "strava_env_token_networks", ("*",))
+    assert strava_service.env_token_allowed("203.0.113.7") is True
+    monkeypatch.setattr(settings, "strava_env_token_networks", ("10.0.0.0/8",))
+    assert strava_service.env_token_allowed("10.1.2.3") is True
+    assert strava_service.env_token_allowed("192.168.1.1") is False
+    assert strava_service.env_token_allowed("testclient") is False
 
 
 def test_env_token_survives_disconnect(client: TestClient, monkeypatch) -> None:
