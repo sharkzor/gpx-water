@@ -49,6 +49,8 @@ services:
       OSM_MAX_AGE_DAYS: "${OSM_MAX_AGE_DAYS:-30}"
       OSM_MIN_FREE_MB: "${OSM_MIN_FREE_MB:-2800}"
       OSM_START_JITTER_SECONDS: "${OSM_START_JITTER_SECONDS:-1800}"
+      # Bronnen voor verboden paden: OSM-kaart, NDW-verkeersborden, BGT (PDOK)
+      LEGALITY_SOURCES: "${LEGALITY_SOURCES:-osm,ndw,bgt}"
       # Regencontrole: KNMI Harmonie (via Open-Meteo) + Buienradar-radar
       WEATHER_ENABLED: "${WEATHER_ENABLED:-true}"
       DEFAULT_SPEED_KMH: "${DEFAULT_SPEED_KMH:-30}"

@@ -551,7 +551,7 @@ def test_strava_process_geeft_verboden_paden_door(
     monkeypatch.setattr(osm_index, "status", lambda: osm_index.IndexStatus(available=True))
     called: list[int] = []
 
-    def fake_check(coords):
+    def fake_check(coords, **kwargs):
         called.append(len(coords))
         return legality.Report(total_distance_km=11.1, forbidden_count=0, warning_count=0, segments=[])
 

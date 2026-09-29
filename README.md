@@ -305,6 +305,14 @@ instantie mét jouw Strava-koppeling en een publieke instantie zonder.
 | `LEGALITY_PREFIX_FORBIDDEN` | `⛔ Verboden` | Waypointnaam voor verboden stukken |
 | `LEGALITY_PREFIX_WARNING` | `❗ Let op` | Waypointnaam voor let-op-stukken |
 | `LEGALITY_SYM` | `Danger Area` | GPX `<sym>` voor beide |
+| `LEGALITY_SOURCES` | `osm,ndw,bgt` | Bronnen die deze installatie aanbiedt voor verboden paden |
+| `NDW_SIGNS_URL` | NDW verkeersborden-API | Bron van de verkeersborden |
+| `NDW_SIGNS_CODES` | `C1,C14,G7,G9` | Welke borden meetellen |
+| `NDW_SIGNS_TTL_SECONDS` | `604800` | Verversfrequentie verkeersborden (7 dagen) |
+| `BGT_TILES_URL` | PDOK BGT-vectortegels | Tegel-URL met `{x}` en `{y}` (zoom 17) |
+| `BGT_CACHE_TTL_SECONDS` | `2592000` | Hoe lang een BGT-tegel bewaard wordt (30 dagen) |
+| `BGT_MAX_TILES` | `4000` | Maximaal aantal BGT-tegels per route (~400 km) |
+| `BGT_WORKERS` | `8` | Gelijktijdige tegeldownloads |
 | `STRAVA_ENABLED` | `auto` (aan) | `false` |
 | `.env` met tokens | ja | **nee** |
 
@@ -464,7 +472,7 @@ Zo zie je ze op je Wahoo naast de drinkwaterpunten. Zet
 
 ## Verboden paden controleren
 
-Vink **Controleer op verboden paden** aan (upload- en Stravapagina) en de app
+Vink **Verboden paden** aan (op alle pagina's) en de app
 controleert of je route over stukken loopt waar fietsen niet, of niet zonder
 meer, mag. Deze functie is overgenomen uit routeboek: de regels en het
 samenvoegen van meldingen zijn daar gelijk.
@@ -492,6 +500,68 @@ Wahoo waarschuwt voordat je het pad op rijdt:
   <type>Forbidden</type>
 </wpt>
 ```
+
+### Bronnen: OpenStreetMap, NDW-verkeersborden en BGT
+
+Onder de optie kies je welke bronnen meedoen (standaard alle drie; de keuze
+wordt onthouden):
+
+| Bron | Wat het is | Sterk in | Zwak in |
+|---|---|---|---|
+| **OpenStreetMap** | Door vrijwilligers bijgehouden kaart met toegangsregels (`bicycle=no`, `access=private`, …) | Paden in bos en natuur, privéterrein | Zo goed als de laatste mapper |
+| **NDW-verkeersborden** | Landelijk register van geplaatste borden (C1, C14, G7, G9) met foto, van het Nationaal Dataportaal Wegverkeer | Juridisch hard: een bord ís het verbod; foto om zelf te controleren | Vooral vanaf de openbare weg gefotografeerd (camera-auto's), meestal in 2022; borden diep in het bos ontbreken |
+| **BGT** | Basisregistratie Grootschalige Topografie (PDOK): elk wegdeel met zijn functie (rijbaan, fietspad, voetpad, ruiterpad …) | Officiële vorm van de openbare ruimte | Zegt niets over toegang; wordt bijgehouden door gemeenten, provincies en Rijk, **niet** door Staatsbosbeheer of Natuurmonumenten; bospaden ontbreken vaak |
+
+**Klopt het dat boswachters de BGT bijhouden?** Niet direct. Bronhouders van
+de BGT zijn gemeenten, provincies, waterschappen, Rijkswaterstaat, ProRail en
+Defensie. Terreinbeheerders geven wijzigingen hooguit door aan de gemeente. En
+de BGT legt de *functie* van een wegdeel vast, geen verbod: borden staan er
+alleen in als "verkeersbord", zonder soort. Daarom levert de BGT alleen
+"let op"-meldingen, en vooral bevestiging.
+
+Hoe de bronnen samenwerken:
+
+- **OpenStreetMap** is de basis (zie hieronder).
+- **NDW**: een bord telt alleen als de route er in de richting van het bord
+  langs komt (±50°), het bord bij een pad hoort dat in die richting loopt, en
+  de route daarna minstens 40 m over dat pad gaat. Zo geeft een C14 bij de
+  rijbaan naast je fietspad, of een G7 bij een zijpad dat je voorbijrijdt,
+  geen melding. Een onderbord als "uitgezonderd fietsers" of "fietsers
+  toegestaan" heft het bord op; een ander onderbord ("uitgezonderd
+  bestemmingsverkeer", onleesbaar) maakt er "let op" van. Zegt
+  OpenStreetMap uitdrukkelijk dat fietsen mag, dan wordt het ook "let op":
+  de foto geeft uitsluitsel.
+- **BGT**: een routepunt ligt op een voetpad, trap, voetgangersgebied of
+  ruiterpad, en binnen 8 m ligt geen rijbaan, fietspad, erf of inrit. Is de
+  weg in OpenStreetMap een fietspad of staat er `bicycle=yes`, dan telt de
+  BGT niet.
+- Melden meerdere bronnen hetzelfde stuk, dan wordt dat één melding met alle
+  bronnen erbij en telt het zwaarste oordeel: een bord maakt van een
+  OSM-"let op" een "verboden".
+
+Op de kaart en in de GPX staat bij elke melding welke bronnen hem geven,
+plus bord, onderbord, datum en een link naar de foto:
+
+```
+Voetpad | Parkpad | km 12.3 t/m 12.6 (300 m) | Bord G7, gezien 2022-03-08, foto: https://wegkenmerken.ndw.nu/api/images/… | Bron: OpenStreetMap, NDW-verkeersborden
+```
+
+Gemeten op een gravelrit van 90 km bij Scherpenzeel: de BGT bevestigde drie
+OSM-meldingen en voegde drie "let op"-stukken toe (bospaden die als voetpad
+zijn ingetekend). NDW vond een G7-bord op een weg die in OpenStreetMap als
+fietsbaar staat; dat wordt "let op", met de foto erbij.
+
+**Caches** (in `data/cache/`):
+
+- NDW-borden: één download van ~75.000 borden (~45 MB, piek ~260 MB geheugen),
+  wekelijks ververst op de achtergrond.
+- BGT-tegels: per tegel van ~190 m, alleen voor de route opgehaald en 30 dagen
+  bewaard. Eerste controle ~20 s per 100 km, daarna enkele seconden. Een
+  storing bij PDOK of NDW blokkeert de controle niet; je ziet dan een
+  notitie bij het resultaat.
+
+`LEGALITY_SOURCES` bepaalt welke bronnen een installatie aanbiedt (standaard
+`osm,ndw,bgt`).
 
 ### De lokale wegenkaart
 
@@ -529,7 +599,8 @@ curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8080/api/o
 ```
 
 Zet `LEGALITY_ENABLED=false` om de functie volledig uit te zetten; er wordt
-dan ook geen kaart gedownload.
+dan ook geen kaart gedownload. Zonder kaart kunnen OpenStreetMap en NDW niet
+draaien (een bord moet aan een pad gekoppeld worden); de BGT werkt dan wel.
 
 ### Beperkingen
 
@@ -537,7 +608,10 @@ dan ook geen kaart gedownload.
 - **OpenStreetMap is zo goed als de tagging.** In Nederland is die zeer
   nauwkeurig, maar een net geopend of juist afgesloten pad kan nog ontbreken.
 - `highway=path` zonder verdere tags wordt bewust niet gemeld; dat is in
-  Nederland te dubbelzinnig.
+  Nederland te dubbelzinnig. De BGT kan zo'n pad wel als "let op" melden als
+  het daar als voetpad is ingetekend.
+- **NDW-borden zijn vaak jaren oud** (meestal 2022) en tijdelijke borden
+  staan er niet in. Kijk bij twijfel naar de foto.
 
 ## Regen onderweg controleren
 
@@ -700,13 +774,13 @@ Zie `.env.example`. Een `.env` in de projectmap wordt automatisch geladen.
 | Endpoint | Methode | Omschrijving |
 |---|---|---|
 | `/` | GET | Webinterface |
-| `/api/process` | POST | multipart: `file`, `water` (standaard `true`), `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
+| `/api/process` | POST | multipart: `file`, `water` (standaard `true`), `radius`, `source`, `roadworks`, `ride_date`, `legality`, `legality_sources` (bijv. `osm,ndw`; leeg = alle), `weather`, `departure` (`JJJJ-MM-DDTUU:MM`), `speed_kmh` → JSON met route, waterpunten en statistiek |
 | `/api/download/{job_id}` | GET | Gegenereerde GPX |
 | `/api/cache/refresh` | POST | Forceer verversen NL-dataset (beheertoken) |
 | `/api/roadworks/refresh` | POST | Forceer verversen NDW-wegwerkzaamheden (beheertoken) |
 | `/api/osm/refresh` | POST | Wegenkaart opnieuw opbouwen (beheertoken) |
 | `/api/routeboek/routes` | GET | Routes van de routeboek.cc-clubpagina (`?refresh=1` forceert een nieuwe scrape) |
-| `/api/routeboek/process` | POST | JSON: `route_ids`, `water`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `weather`, `departure`, `speed_kmh` → resultaat per route |
+| `/api/routeboek/process` | POST | JSON: `route_ids`, `water`, `radius`, `source`, `roadworks`, `ride_date`, `legality`, `legality_sources` (lijst), `weather`, `departure`, `speed_kmh` → resultaat per route |
 | `/strava` | GET | Pagina met Strava-routes |
 | `/strava/connect` | GET | Start OAuth-koppeling |
 | `/strava/callback` | GET | OAuth-callback van Strava |
@@ -756,6 +830,10 @@ app/
     refresher.py           houdt de caches op de achtergrond vers
     osm_index.py           lokale OSM-wegenkaart (SQLite + R*Tree), maandelijks opgebouwd
     legality.py            controle op verboden paden (overgenomen uit routeboek)
+    legality_extra.py      NDW-borden en BGT als extra bronnen
+    ndw_signs.py           NDW-verkeersbordendatabase (cache)
+    bgt.py                 BGT-vectortegels van PDOK (cache)
+    mvt.py                 minimale decoder voor vectortegels
     osm_service.py         Overpass API
     route_service.py       afstand, positie langs route, ontdubbelen, statistiek
     geo.py                 projectie, NL-detectie, bounding box

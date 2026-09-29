@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.models.schemas import RouteboekProcessedRoute, RouteboekRouteInfo
 from app.routers.core import (
     legality_context,
+    parse_legality_sources,
     parse_ride_date,
     parse_weather,
     require_any_check,
@@ -73,6 +74,7 @@ class RouteboekProcessRequest(BaseModel):
     roadworks: bool = False
     ride_date: str | None = None
     legality: bool = False
+    legality_sources: list[str] | None = Field(default=None, max_length=5)
     weather: bool = False
     departure: str | None = None
     speed_kmh: float | None = None
@@ -87,6 +89,7 @@ def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedR
     radius_m = validate_options(payload.radius, payload.source)
     day = parse_ride_date(payload.ride_date)
     weather_request = parse_weather(payload.weather, payload.departure, payload.speed_kmh)
+    sources = parse_legality_sources(payload.legality_sources)
 
     known = {route.id: route for route in routeboek_service.list_routes()}
     results: list[RouteboekProcessedRoute] = []
@@ -114,6 +117,7 @@ def process_routes(payload: RouteboekProcessRequest) -> list[RouteboekProcessedR
                 payload.legality,
                 weather_request,
                 payload.water,
+                sources,
             )
             result.filename = processing.safe_filename(
                 name, processing.output_suffix(payload.water)

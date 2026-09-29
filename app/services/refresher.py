@@ -16,7 +16,7 @@ import threading
 from collections.abc import Callable
 
 from app.config import get_settings
-from app.services import roadworks_nl, waterpoints_nl
+from app.services import bgt, ndw_signs, roadworks_nl, waterpoints_nl
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,14 @@ def refresh_stale_caches() -> list[str]:
                 roadworks_nl.get_road_works,
             )
         )
+    if settings.legality_enabled and "ndw" in settings.legality_sources:
+        jobs.append(
+            (
+                "NDW-verkeersborden",
+                _is_stale(ndw_signs.cache_age_seconds(), settings.ndw_signs_ttl_seconds),
+                lambda: ndw_signs.get_signs(force_refresh=True),
+            )
+        )
 
     refreshed: list[str] = []
     for name, stale, refresh in jobs:
@@ -59,6 +67,13 @@ def refresh_stale_caches() -> list[str]:
             refreshed.append(name)
         except Exception:  # noqa: BLE001 - de lus mag nooit sterven
             logger.exception("Achtergrondverversing %s mislukt", name)
+    if settings.legality_enabled and "bgt" in settings.legality_sources:
+        try:
+            removed = bgt.prune_cache()
+            if removed:
+                logger.info("Achtergrond: %d verouderde BGT-tegels opgeruimd", removed)
+        except Exception:  # noqa: BLE001
+            logger.exception("Opruimen BGT-cache mislukt")
     if refreshed:
         logger.info("Achtergrond: %s ververst", ", ".join(refreshed))
     return refreshed

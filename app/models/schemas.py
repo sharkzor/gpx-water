@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 SourceName = Literal["drinkwaterpunten.nl", "openstreetmap"]
 
@@ -91,6 +91,23 @@ class RoadWorkOut(BaseModel):
     along_route_km: float
 
 
+class LegalitySignOut(BaseModel):
+    """Verkeersbord uit de NDW-database dat een melding onderbouwt."""
+
+    code: str
+    text: str | None = None
+    image_url: str | None = None
+    last_seen: str | None = None
+    lat: float
+    lon: float
+    road: str | None = None
+
+    @field_validator("image_url")
+    @classmethod
+    def _safe_image(cls, value: str | None) -> str | None:
+        return safe_http_url(value)
+
+
 class LegalitySegmentOut(BaseModel):
     """Stuk route over een pad waar fietsen niet (zonder meer) mag."""
 
@@ -103,6 +120,9 @@ class LegalitySegmentOut(BaseModel):
     end_km: float
     length_m: float
     coordinates: list[list[float]]
+    # Welke bronnen dit stuk melden (OpenStreetMap, NDW-verkeersborden, BGT)
+    sources: list[str] = []
+    signs: list[LegalitySignOut] = []
 
 
 class RainSegmentOut(BaseModel):
@@ -171,6 +191,9 @@ class ProcessResult(BaseModel):
     legality_checked: bool = False
     legality_error: str | None = None
     legality_segments: list[LegalitySegmentOut] = []
+    # Gebruikte bronnen en meldingen over bronnen die niet beschikbaar waren
+    legality_sources: list[str] = []
+    legality_notes: list[str] = []
     # Alleen gevuld als er op regen is gecontroleerd
     weather_checked: bool = False
     weather_error: str | None = None

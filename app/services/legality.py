@@ -49,6 +49,10 @@ from app.services.geo import LocalProjection, haversine_m
 
 logger = logging.getLogger(__name__)
 
+SOURCE_OSM = "OpenStreetMap"
+#: Beschikbare bronnen (sleutel → weergavenaam) in volgorde van gewicht.
+SOURCES = {"osm": SOURCE_OSM, "ndw": "NDW-verkeersborden", "bgt": "BGT"}
+
 # -- Afstemming --------------------------------------------------------------
 
 #: Zoekvakken van deze grootte langs de route. Klein genoeg om de route
@@ -187,6 +191,10 @@ class Segment:
     end_km: float
     length_m: float
     coordinates: list[tuple[float, float]]
+    #: Welke bronnen dit stuk melden; meer bronnen = sterker bewijs.
+    sources: list[str] = field(default_factory=lambda: [SOURCE_OSM])
+    #: Verkeersborden (NDW) die dit stuk onderbouwen, met foto.
+    signs: list[dict] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -197,6 +205,8 @@ class Report:
     segments: list[Segment]
     checked_at: float = field(default_factory=time.time)
     source: str = "OpenStreetMap"
+    #: Meldingen over bronnen die (deels) niet beschikbaar waren.
+    notes: list[str] = field(default_factory=list)
 
 
 # -- Wegen ophalen -----------------------------------------------------------
@@ -420,6 +430,7 @@ def _way_label(
 def _to_segments(
     flagged: dict[int, tuple[float, Way, tuple[str, str, str]]],
     samples: Sequence[tuple[float, float, float]],
+    source: str = SOURCE_OSM,
 ) -> list[Segment]:
     segments: list[Segment] = []
     for run in _merge_runs(_runs(flagged, samples), flagged, samples):
@@ -443,17 +454,80 @@ def _to_segments(
                 end_km=round(samples[last][2], 2),
                 length_m=round(length, 1),
                 coordinates=coords,
+                sources=[source],
             )
         )
     segments.sort(key=lambda s: s.start_km)
     return segments
 
 
+def span_between(
+    samples: Sequence[tuple[float, float, float]], start_km: float, end_km: float
+) -> tuple[list[tuple[float, float]], float]:
+    """Routepunten en lengte (m) tussen twee km-posities."""
+    coords = [(lat, lon) for lat, lon, km in samples if start_km - 1e-6 <= km <= end_km + 1e-6]
+    length = sum(
+        haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(coords, coords[1:])
+    )
+    return coords, length
+
+
+#: Meldingen van verschillende bronnen die elkaar raken of zo dicht bij elkaar
+#: liggen, gaan over hetzelfde stuk en worden één melding.
+COMBINE_GAP_KM = 0.03
+
+
+def combine(
+    primary: list[Segment],
+    extra: Sequence[Segment],
+    samples: Sequence[tuple[float, float, float]],
+) -> list[Segment]:
+    """Voeg meldingen van extra bronnen samen met die van de hoofdbron.
+
+    Overlapt een melding met een bestaande, dan wordt dat een bevestiging: de
+    bron (en eventuele bordfoto) komt erbij en het zwaarste oordeel telt. Een
+    verkeersbord maakt zo van OSM-"let op" een "verboden". Staat een melding
+    op zichzelf, dan komt hij er gewoon bij.
+    """
+    result = list(primary)
+    for seg in sorted(extra, key=lambda s: s.start_km):
+        best: Segment | None = None
+        best_overlap = -1.0
+        for target in result:
+            overlap = min(target.end_km, seg.end_km) - max(target.start_km, seg.start_km)
+            if overlap + COMBINE_GAP_KM >= 0 and overlap > best_overlap:
+                best, best_overlap = target, overlap
+        if best is None:
+            result.append(seg)
+            continue
+        for source in seg.sources:
+            if source not in best.sources:
+                best.sources.append(source)
+        best.signs.extend(s for s in seg.signs if s not in best.signs)
+        if seg.severity == "forbidden" and best.severity != "forbidden":
+            best.severity, best.code, best.label = seg.severity, seg.code, seg.label
+        best.way_name = best.way_name or seg.way_name
+        start, end = min(best.start_km, seg.start_km), max(best.end_km, seg.end_km)
+        if (start, end) != (best.start_km, best.end_km):
+            coords, length = span_between(samples, start, end)
+            if len(coords) >= 2:
+                best.start_km, best.end_km = start, end
+                best.coordinates, best.length_m = coords, round(length, 1)
+    result.sort(key=lambda s: s.start_km)
+    return result
+
+
 def check_route(
     points: Sequence[tuple[float, float]],
     progress: Callable[[float, str], None] | None = None,
+    sources: Sequence[str] = ("osm",),
 ) -> Report:
-    """Controleer een route op stukken waar fietsen niet (zonder meer) mag."""
+    """Controleer een route op stukken waar fietsen niet (zonder meer) mag.
+
+    `sources` kiest de bronnen: "osm" (lokale OSM-kaart), "ndw" (verkeersborden,
+    heeft de OSM-kaart nodig om een bord aan een pad te koppelen) en "bgt".
+    Een storing bij NDW of BGT wordt een notitie, nooit een fout.
+    """
 
     def report_progress(value: float, message: str) -> None:
         if progress is not None:
@@ -467,13 +541,62 @@ def check_route(
     projection = LocalProjection.from_points(points)
     report_progress(0.05, "Kaartgegevens opzoeken")
 
-    ways = load_ways(points)
+    # OSM en NDW kunnen niet zonder de kaart; de BGT gebruikt hem alleen om
+    # meldingen op een uitdrukkelijk fietsbare weg te schrappen.
+    try:
+        ways = load_ways(points)
+    except FileNotFoundError:
+        if "osm" in sources or "ndw" in sources:
+            raise
+        ways = []
+    segments: list[Segment] = []
+    if "osm" in sources:
+        segments = _check_osm(ways, samples, projection)
+
+    # Pas hier importeren: deze modules gebruiken zelf `legality`.
+    from app.services import legality_extra
+
+    extra: list[Segment] = []
+    notes: list[str] = []
+    if "ndw" in sources:
+        report_progress(0.9, "Verkeersborden controleren")
+        try:
+            extra.extend(legality_extra.detect_signs(samples, projection, ways))
+        except Exception as exc:  # noqa: BLE001 - bron mag de controle niet blokkeren
+            logger.warning("NDW-verkeersborden niet beschikbaar: %s", exc)
+            notes.append(f"NDW-verkeersborden niet beschikbaar: {exc}")
+    if "bgt" in sources:
+        report_progress(0.92, "BGT controleren")
+        try:
+            found, note = legality_extra.detect_bgt(samples, projection, ways)
+            extra.extend(found)
+            if note:
+                notes.append(note)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("BGT niet beschikbaar: %s", exc)
+            notes.append(f"BGT niet beschikbaar: {exc}")
+
+    segments = combine(segments, extra, samples)
+    return Report(
+        total_distance_km=round(total_km, 2),
+        forbidden_count=sum(1 for s in segments if s.severity == "forbidden"),
+        warning_count=sum(1 for s in segments if s.severity == "warning"),
+        segments=segments,
+        source=", ".join(SOURCES[k] for k in SOURCES if k in sources),
+        notes=notes,
+    )
+
+
+def _check_osm(
+    ways: Sequence[Way],
+    samples: Sequence[tuple[float, float, float]],
+    projection: LocalProjection,
+) -> list[Segment]:
+    """De oorspronkelijke OSM-controle (zie de uitleg bovenaan)."""
     problematic: list[Way] = []
     allowed: list[Way] = []
     for way in ways:
         (problematic if classify(way.tags) is not None else allowed).append(way)
-
-    report_progress(0.88, "Route langs de kaart leggen")
 
     problem_index = _WayIndex(problematic, projection)
     allowed_index = _WayIndex(allowed, projection)
@@ -490,12 +613,4 @@ def check_route(
         verdict = classify(way.tags)
         if verdict is not None:
             flagged[i] = (distance, way, verdict)
-
-    report_progress(0.95, "Meldingen samenvoegen")
-    segments = _to_segments(flagged, samples)
-    return Report(
-        total_distance_km=round(total_km, 2),
-        forbidden_count=sum(1 for s in segments if s.severity == "forbidden"),
-        warning_count=sum(1 for s in segments if s.severity == "warning"),
-        segments=segments,
-    )
+    return _to_segments(flagged, samples)

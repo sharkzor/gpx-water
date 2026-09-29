@@ -149,7 +149,16 @@ def _describe_segment(segment: "Segment") -> str:
         else f"{segment.length_m:.0f} m"
     )
     parts.append(f"km {segment.start_km:.1f} t/m {segment.end_km:.1f} ({length})")
-    parts.append(f"Bron: {SOURCE_OSM}")
+    for sign in segment.signs[:2]:
+        text = f"Bord {sign['code']}"
+        if sign.get("text"):
+            text += f" ({sign['text']})"
+        if sign.get("last_seen"):
+            text += f", gezien {sign['last_seen']}"
+        if sign.get("image_url"):
+            text += f", foto: {sign['image_url']}"
+        parts.append(text)
+    parts.append(f"Bron: {', '.join(segment.sources or [SOURCE_OSM])}")
     return " | ".join(parts)
 
 

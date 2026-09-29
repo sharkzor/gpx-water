@@ -5,12 +5,15 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from typing import Sequence
 
 from app.config import get_settings
 from app.models.schemas import (
     LegalitySegmentOut,
+    LegalitySignOut,
     ProcessResult,
     RainSegmentOut,
     RoadWorkOut,
@@ -108,34 +111,62 @@ def _collect_road_works(
     return matched, None
 
 
+@dataclass(slots=True)
+class LegalityOutcome:
+    segments: list[legality.Segment] = field(default_factory=list)
+    error: str | None = None
+    sources: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def _map_unavailable_message() -> str:
+    job = osm_index.current_job()
+    if job is not None and job.state == "running":
+        return (
+            "De wegenkaart wordt nog opgebouwd "
+            f"({job.message.lower()}); probeer het over een paar minuten opnieuw."
+        )
+    return "De wegenkaart is nog niet beschikbaar; die wordt automatisch opgebouwd."
+
+
 def _collect_legality(
     coords: list[tuple[float, float]],
-) -> tuple[list[legality.Segment], str | None]:
-    """Controleer de route op verboden paden; geeft (segmenten, foutmelding).
+    sources: Sequence[str],
+) -> LegalityOutcome:
+    """Controleer de route op verboden paden met de gekozen bronnen.
 
     Net als bij de wegwerkzaamheden mag dit de waterpunten nooit blokkeren.
+    OSM en NDW hebben de lokale wegenkaart nodig; ontbreekt die, dan draait de
+    BGT (als gekozen) alleen en komt er een notitie bij.
     """
+    outcome = LegalityOutcome()
     if not any(in_netherlands(lat, lon) for lat, lon in coords):
-        return [], "De controle op verboden paden is alleen beschikbaar voor Nederland."
-    if not osm_index.status().available:
-        job = osm_index.current_job()
-        if job is not None and job.state == "running":
-            return [], (
-                "De wegenkaart wordt nog opgebouwd "
-                f"({job.message.lower()}); probeer het over een paar minuten opnieuw."
-            )
-        return [], "De wegenkaart is nog niet beschikbaar; die wordt automatisch opgebouwd."
+        outcome.error = "De controle op verboden paden is alleen beschikbaar voor Nederland."
+        return outcome
+    chosen = [s for s in legality.SOURCES if s in sources]
+    if not osm_index.status().available and ("osm" in chosen or "ndw" in chosen):
+        message = _map_unavailable_message()
+        chosen = [s for s in chosen if s not in ("osm", "ndw")]
+        if not chosen:
+            outcome.error = message
+            return outcome
+        outcome.notes.append(f"OpenStreetMap en NDW overgeslagen: {message}")
+    outcome.sources = [legality.SOURCES[s] for s in chosen]
     try:
-        report = legality.check_route(coords)
+        report = legality.check_route(coords, sources=chosen)
     except Exception as exc:
         logger.warning("Controle op verboden paden mislukt: %s", exc)
-        return [], f"De controle op verboden paden is mislukt: {exc}"
+        outcome.error = f"De controle op verboden paden is mislukt: {exc}"
+        return outcome
     logger.info(
-        "Verboden paden: %d verboden, %d let op",
+        "Verboden paden (%s): %d verboden, %d let op",
+        ", ".join(chosen),
         report.forbidden_count,
         report.warning_count,
     )
-    return report.segments, None
+    outcome.segments = report.segments
+    outcome.notes.extend(report.notes)
+    return outcome
 
 
 def _collect_weather(
@@ -160,6 +191,7 @@ def process_gpx(
     check_legality: bool = False,
     weather: weather_service.WeatherRequest | None = None,
     check_water: bool = True,
+    legality_sources: Sequence[str] | None = None,
 ) -> ProcessResult:
     """Verwerk een GPX en schrijf de nieuwe GPX naar de tijdelijke map.
 
@@ -202,12 +234,14 @@ def process_gpx(
     elif check_roadworks:
         roadworks_error = "Controle op wegwerkzaamheden is uitgeschakeld."
 
-    segments: list[legality.Segment] = []
-    legality_error: str | None = None
+    outcome = LegalityOutcome()
     if check_legality and settings.legality_enabled:
-        segments, legality_error = _collect_legality(coords)
+        outcome = _collect_legality(
+            coords, legality_sources or settings.legality_sources
+        )
     elif check_legality:
-        legality_error = "Controle op verboden paden is uitgeschakeld."
+        outcome.error = "Controle op verboden paden is uitgeschakeld."
+    segments = outcome.segments
 
     report: weather_service.WeatherReport | None = None
     weather_error: str | None = None
@@ -277,7 +311,9 @@ def process_gpx(
             for w in road_works
         ],
         legality_checked=check_legality,
-        legality_error=legality_error,
+        legality_error=outcome.error,
+        legality_sources=outcome.sources,
+        legality_notes=outcome.notes,
         legality_segments=[
             LegalitySegmentOut(
                 severity=seg.severity,
@@ -289,6 +325,8 @@ def process_gpx(
                 end_km=seg.end_km,
                 length_m=seg.length_m,
                 coordinates=[[round(lat, 6), round(lon, 6)] for lat, lon in seg.coordinates],
+                sources=seg.sources,
+                signs=[LegalitySignOut(**sign) for sign in seg.signs],
             )
             for seg in segments
         ],

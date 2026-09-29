@@ -5,6 +5,8 @@ os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="gpx-test-"))
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 # Tests mogen nooit echte downloads starten via de achtergrondlus.
 os.environ["BACKGROUND_REFRESH"] = "false"
+# NDW en BGT zijn online bronnen; tests die ze nodig hebben, vervangen ze zelf.
+os.environ["LEGALITY_SOURCES"] = "osm"
 
 # Zorg dat een echte .env in de projectmap de tests nooit beïnvloedt:
 # python-dotenv overschrijft geen variabelen die al bestaan.

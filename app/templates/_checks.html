@@ -47,9 +47,21 @@
     ⛔ Verboden paden (alleen Nederland)
   </label>
   <div id="legality-wrap" hidden>
+    {% if legality_sources|length > 1 %}
+    <div class="source-choices" role="group" aria-label="Bronnen voor verboden paden">
+      <span class="source-choices-title">Bronnen</span>
+      {% for key, name in legality_sources %}
+      <label class="check small">
+        <input type="checkbox" value="{{ key }}" data-legality-source checked>
+        {{ name }}
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
     <p class="hint">
       Meldt voetpaden, trappen, privéwegen en andere stukken waar fietsen
-      niet (zonder meer) mag. Bron: OpenStreetMap.
+      niet (zonder meer) mag. OpenStreetMap is de basis; NDW-verkeersborden
+      (met foto) en de BGT bevestigen of vullen aan.
       {% if not legality_ready %}<br><strong>De wegenkaart wordt nog opgebouwd; dit kan
       na de eerste start een kwartier duren.</strong>{% endif %}
     </p>

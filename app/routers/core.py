@@ -12,7 +12,15 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.config import get_settings
 from app.models.schemas import ProcessResult
-from app.services import osm_index, processing, roadworks_nl, waterpoints_nl, weather_service
+from app.services import (
+    legality,
+    ndw_signs,
+    osm_index,
+    processing,
+    roadworks_nl,
+    waterpoints_nl,
+    weather_service,
+)
 from app.services.gpx_service import GpxError
 from app.web import templates
 
@@ -115,6 +123,24 @@ def require_any_check(
         )
 
 
+def parse_legality_sources(value: str | list[str] | None) -> tuple[str, ...]:
+    """Gekozen bronnen voor verboden paden; leeg = alle bronnen van deze instantie."""
+    if value is None:
+        return settings.legality_sources
+    items = value.split(",") if isinstance(value, str) else list(value)
+    chosen = {str(item).strip().lower() for item in items if str(item).strip()}
+    if not chosen:
+        return settings.legality_sources
+    unknown = chosen - set(settings.legality_sources)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail="Onbekende bron voor verboden paden; kies uit: "
+            + ", ".join(settings.legality_sources),
+        )
+    return tuple(s for s in settings.legality_sources if s in chosen)
+
+
 def weather_context() -> dict[str, object]:
     """Template-variabelen voor de optie "Controleer op regen"."""
     return {
@@ -129,6 +155,9 @@ def legality_context() -> dict[str, object]:
     return {
         "legality_enabled": settings.legality_enabled,
         "legality_ready": settings.legality_enabled and osm_index.status().available,
+        "legality_sources": [
+            (key, legality.SOURCES[key]) for key in settings.legality_sources
+        ],
     }
 
 
@@ -142,12 +171,13 @@ def run_processing(
     check_legality: bool = False,
     weather: weather_service.WeatherRequest | None = None,
     check_water: bool = True,
+    legality_sources: tuple[str, ...] | None = None,
 ) -> ProcessResult:
     """Voer de gekozen controles uit en vertaal fouten naar HTTP-antwoorden."""
     try:
         return processing.process_gpx(
             raw, filename, radius_m, source, check_roadworks, ride_date, check_legality,
-            weather, check_water,
+            weather, check_water, legality_sources,
         )
     except GpxError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -182,6 +212,10 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
+def _age(seconds: float | None) -> int | None:
+    return None if seconds is None else round(seconds)
+
+
 @router.get("/api/health")
 async def health() -> JSONResponse:
     age = waterpoints_nl.cache_age_seconds()
@@ -197,6 +231,10 @@ async def health() -> JSONResponse:
             "legality_enabled": settings.legality_enabled,
             "osm_map_available": osm["available"] if osm else None,
             "osm_map_age_days": osm["age_days"] if osm else None,
+            "legality_sources": list(settings.legality_sources),
+            "ndw_signs_cache_age_seconds": _age(ndw_signs.cache_age_seconds())
+            if settings.legality_enabled and "ndw" in settings.legality_sources
+            else None,
             "data_dir": str(settings.data_dir),
             "strava_enabled": settings.strava_feature_enabled,
             "strava_configured": settings.strava_enabled,
@@ -213,6 +251,7 @@ async def process(
     roadworks: bool = Form(default=False),
     ride_date: str = Form(default=None),
     legality: bool = Form(default=False),
+    legality_sources: str = Form(default=None),
     weather: bool = Form(default=False),
     departure: str = Form(default=None),
     speed_kmh: float = Form(default=None),
@@ -221,6 +260,7 @@ async def process(
     radius_m = validate_options(radius, source)
     day = parse_ride_date(ride_date)
     weather_request = parse_weather(weather, departure, speed_kmh)
+    sources = parse_legality_sources(legality_sources)
 
     raw = await file.read()
     if not raw:
@@ -234,7 +274,7 @@ async def process(
     return await run_in_threadpool(
         run_processing,
         raw, file.filename or "route.gpx", radius_m, source, roadworks, day, legality,
-        weather_request, water,
+        weather_request, water, sources,
     )
 
 

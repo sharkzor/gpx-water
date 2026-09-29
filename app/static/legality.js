@@ -11,6 +11,30 @@ window.Legality = (function () {
     }[c]));
   }
 
+  function safeUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function sources(seg) {
+    return (seg.sources && seg.sources.length ? seg.sources : ["OpenStreetMap"]).join(" + ");
+  }
+
+  function signRows(seg) {
+    return (seg.signs || []).slice(0, 3).map((sign) => {
+      let text = `🪧 Bord ${esc(sign.code)}`;
+      if (sign.text) text += ` (${esc(sign.text)})`;
+      if (sign.last_seen) text += ` · gezien ${esc(sign.last_seen)}`;
+      const url = sign.image_url && safeUrl(sign.image_url);
+      if (url) text += ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">foto</a>`;
+      return text;
+    });
+  }
+
   function length(m) {
     return m >= 1000 ? `${(m / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(m)} m`;
   }
@@ -20,7 +44,8 @@ window.Legality = (function () {
     const rows = [`<strong>${style.icon} ${esc(seg.label)}</strong>`];
     if (seg.way_name) rows.push(esc(seg.way_name));
     rows.push(`km ${seg.start_km.toFixed(1)} t/m ${seg.end_km.toFixed(1)} · ${length(seg.length_m)}`);
-    rows.push("<em>OpenStreetMap</em>");
+    rows.push(...signRows(seg));
+    rows.push(`<em>Bron: ${esc(sources(seg))}</em>`);
     return rows.join("<br>");
   }
 
@@ -68,7 +93,7 @@ window.Legality = (function () {
       const style = STYLE[seg.severity] || STYLE.warning;
       const li = document.createElement("li");
       li.innerHTML = `km ${seg.start_km.toFixed(1)} – ${style.icon} ${esc(seg.label)}` +
-        `<small>${esc(seg.way_name || "naamloos pad")} · ${length(seg.length_m)}</small>`;
+        `<small>${esc(seg.way_name || "naamloos pad")} · ${length(seg.length_m)} · ${esc(sources(seg))}</small>`;
       li.style.cursor = "pointer";
       li.addEventListener("click", () => map.fitBounds(L.latLngBounds(seg.coordinates), { maxZoom: 17 }));
       listEl.appendChild(li);

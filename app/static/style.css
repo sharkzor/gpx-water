@@ -274,6 +274,24 @@ code {
   width: auto;
   margin: 0;
 }
+.option-group .source-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin: 0.5rem 0 0 1.5rem;
+}
+.option-group .source-choices-title {
+  width: 100%;
+  font-size: 0.82rem;
+  color: #5b6675;
+}
+.option-group label.check.small {
+  font-weight: 400;
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: inherit;
+}
 .option-group .hint {
   font-size: 0.82rem;
   color: #5b6675;

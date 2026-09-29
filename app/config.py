@@ -108,6 +108,33 @@ class Settings:
             "LEGALITY_PREFIX_WARNING", "\u2757 Let op"
         )
         self.legality_sym: str = os.getenv("LEGALITY_SYM", "Danger Area")
+        # Bronnen voor de controle op verboden paden die deze instantie aanbiedt;
+        # de gebruiker kiest daaruit per controle (standaard alle).
+        self.legality_sources: tuple[str, ...] = tuple(
+            s.strip().lower()
+            for s in os.getenv("LEGALITY_SOURCES", "osm,ndw,bgt").split(",")
+            if s.strip().lower() in ("osm", "ndw", "bgt")
+        )
+        # NDW-verkeersbordendatabase (landelijk register van geplaatste borden)
+        self.ndw_signs_url: str = os.getenv(
+            "NDW_SIGNS_URL",
+            "https://data.ndw.nu/api/rest/static-road-data/traffic-signs/v4/current-state",
+        )
+        self.ndw_signs_codes: tuple[str, ...] = tuple(
+            c.strip().upper()
+            for c in os.getenv("NDW_SIGNS_CODES", "C1,C14,G7,G9").split(",")
+            if c.strip()
+        )
+        self.ndw_signs_ttl_seconds: int = _int("NDW_SIGNS_TTL_SECONDS", 7 * 24 * 3600)
+        # BGT-vectortegels van PDOK (zoomniveau 17, ~190 m per tegel)
+        self.bgt_tiles_url: str = os.getenv(
+            "BGT_TILES_URL",
+            "https://api.pdok.nl/kadaster/bgt/ogc/v1/tiles/WebMercatorQuad/17/{y}/{x}?f=mvt",
+        )
+        self.bgt_cache_ttl_seconds: int = _int("BGT_CACHE_TTL_SECONDS", 30 * 24 * 3600)
+        # Bovengrens per route (~10 tegels per km); beschermt PDOK en de server.
+        self.bgt_max_tiles: int = _int("BGT_MAX_TILES", 4000)
+        self.bgt_workers: int = _int("BGT_WORKERS", 8)
 
         # Regencontrole: KNMI-model (via Open-Meteo) + Buienradar-radar
         self.weather_enabled: bool = os.getenv(

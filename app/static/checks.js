@@ -36,6 +36,37 @@ window.Checks = (function () {
     }
   }
 
+  // Bronnen voor verboden paden; zonder vinkjes (één bron) gebruikt de server alles.
+  const sourceBoxes = () => Array.from(document.querySelectorAll("input[data-legality-source]"));
+
+  function legalitySources() {
+    const boxes = sourceBoxes();
+    return boxes.length ? boxes.filter((b) => b.checked).map((b) => b.value) : null;
+  }
+
+  function saveSources() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({ ...load(), legality_sources: legalitySources() }));
+    } catch (err) {
+      /* zie save() */
+    }
+  }
+
+  function initSources() {
+    const stored = load().legality_sources;
+    const boxes = sourceBoxes();
+    if (Array.isArray(stored) && boxes.some((b) => stored.includes(b.value))) {
+      boxes.forEach((b) => { b.checked = stored.includes(b.value); });
+    }
+    boxes.forEach((box) => {
+      box.addEventListener("change", () => {
+        // Minimaal één bron: de laatste kan niet uit.
+        if (!boxes.some((b) => b.checked)) box.checked = true;
+        saveSources();
+      });
+    });
+  }
+
   function anySelected() {
     return Object.keys(DEFAULTS).some(checked);
   }
@@ -63,6 +94,7 @@ window.Checks = (function () {
       box.addEventListener("change", () => { save(); update(); });
     });
     update();
+    initSources();
     Weather.init();
   }
 
@@ -76,6 +108,7 @@ window.Checks = (function () {
       roadworks: roadworks,
       ride_date: roadworks && el("ride_date") ? el("ride_date").value || null : null,
       legality: checked("legality"),
+      legality_sources: checked("legality") ? legalitySources() : null,
       ...Weather.params(),
     };
   }
@@ -90,7 +123,10 @@ window.Checks = (function () {
       formData.append("roadworks", "true");
       if (p.ride_date) formData.append("ride_date", p.ride_date);
     }
-    if (p.legality) formData.append("legality", "true");
+    if (p.legality) {
+      formData.append("legality", "true");
+      if (p.legality_sources) formData.append("legality_sources", p.legality_sources.join(","));
+    }
     Weather.appendTo(formData);
   }
 
@@ -122,7 +158,9 @@ window.Checks = (function () {
         out.push(["na", "⛔", "Verboden paden", r.legality_error]);
       } else {
         const c = Legality.counts(r);
-        out.push([c.forbidden ? "bad" : c.warning ? "warn" : "ok", "⛔", "Verboden paden", Legality.summary(r)]);
+        const notes = (r.legality_notes || []).length ? ` · ${r.legality_notes.join(" · ")}` : "";
+        const level = c.forbidden ? "bad" : c.warning ? "warn" : notes ? "na" : "ok";
+        out.push([level, "⛔", "Verboden paden", Legality.summary(r) + notes]);
       }
     }
     if (r.weather_checked) {
