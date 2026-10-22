@@ -63,7 +63,6 @@
 
   function renderRoadWorks(data) {
     const works = data.road_works || [];
-    const wrap = document.getElementById("rw-list-wrap");
     works.forEach((w) => {
       // Het afgesloten stuk zelf, zodat je ziet of het echt op jouw route ligt.
       (w.lines || []).forEach((ln) => {
@@ -72,25 +71,10 @@
       L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(Overview.worksPopup(w)).addTo(layers);
     });
 
-    const list = document.getElementById("rw-list");
-    if (!list) return;
-    list.innerHTML = "";
-    works.forEach((w) => {
-      const li = document.createElement("li");
-      li.innerHTML = `km ${w.along_route_km.toFixed(1)} – ${esc(w.cause || "Wegwerkzaamheden")}` +
-        `<small>${esc((Overview.IMPACT[w.impact] || Overview.IMPACT.hinder).label)} · ${esc(w.authority || "")} · ${esc(w.start || "?")} t/m ${esc(w.end || "?")}</small>`;
-      li.style.cursor = "pointer";
-      li.addEventListener("click", () => map.setView([w.lat, w.lon], 16));
-      list.appendChild(li);
-    });
-    if (wrap) wrap.hidden = works.length === 0;
   }
 
   function renderLegality(data) {
-    const wrap = document.getElementById("lg-list-wrap");
     Legality.draw(data, layers);
-    Legality.fillList(document.getElementById("lg-list"), data, map);
-    if (wrap) wrap.hidden = !(data.legality_segments || []).length;
   }
 
   function renderWeather(data) {

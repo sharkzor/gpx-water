@@ -161,6 +161,40 @@ const Overview = (function () {
       axis + body + ticks + `</svg>`;
   }
 
+  function period(w) {
+    if (!w.start && !w.end) return "";
+    return `${w.start || "?"} t/m ${w.end || "?"}`;
+  }
+
+  /* Uitklapbare lijsten van werkzaamheden en verboden paden, op volgorde van rijrichting. */
+  function lists(r) {
+    let out = "";
+    const works = r.road_works || [];
+    if (works.length) {
+      const items = works.map((w) => {
+        const impact = IMPACT[w.impact] || IMPACT.hinder;
+        const meta = [impact.label, w.authority, period(w)].filter(Boolean).map(esc).join(" · ");
+        return `<li class="ov-item" data-lat="${w.lat}" data-lon="${w.lon}">` +
+          `<span class="ov-km">km ${num(w.along_route_km)}</span> ⚠️ ${esc(w.cause || "Wegwerkzaamheden")}` +
+          `<small>${meta}</small>${w.detour ? `<small><em>${esc(w.detour)}</em></small>` : ""}</li>`;
+      }).join("");
+      out += `<details class="ov-list" open><summary>⚠️ Wegwerkzaamheden (${works.length})</summary><ol>${items}</ol></details>`;
+    }
+    const segs = r.legality_segments || [];
+    if (segs.length) {
+      const items = segs.map((s) => {
+        const len = s.length_m >= 1000 ? `${num(s.length_m / 1000)} km` : `${Math.round(s.length_m)} m`;
+        const meta = [s.severity === "forbidden" ? "Verboden" : "Aandachtspunt", len, (s.sources || []).join(", ")]
+          .filter(Boolean).map(esc).join(" · ");
+        return `<li class="ov-item" data-lat="${s.coordinates[0][0]}" data-lon="${s.coordinates[0][1]}">` +
+          `<span class="ov-km">km ${num(s.start_km)}–${num(s.end_km)}</span> 🚫 ${esc(s.label)}${s.way_name ? " – " + esc(s.way_name) : ""}` +
+          `<small>${meta}</small></li>`;
+      }).join("");
+      out += `<details class="ov-list" open><summary>🚫 Verboden paden en aandachtspunten (${segs.length})</summary><ol>${items}</ol></details>`;
+    }
+    return out;
+  }
+
   /* HTML-blok voor een resultaat; leeg als er niets te tonen valt. */
   function html(r) {
     const items = chips(r);
@@ -168,7 +202,7 @@ const Overview = (function () {
     const legend = items
       .map(([kind, icon, text]) => `<li class="ov-chip ov-${kind}"><span aria-hidden="true">${icon}</span> ${esc(text)}</li>`)
       .join("");
-    return `<div class="overview"><ul class="ov-chips">${legend}</ul>${svg(r)}</div>`;
+    return `<div class="overview"><ul class="ov-chips">${legend}</ul>${svg(r)}${lists(r)}</div>`;
   }
 
   /* Popup voor een werkzaamheid op de kaart. */

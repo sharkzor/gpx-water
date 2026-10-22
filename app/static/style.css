@@ -367,3 +367,10 @@ code {
 .ov-tick { font-size: 9px; fill: #64748b; }
 .ov-hit { cursor: pointer; }
 .ov-hit:hover text { font-size: 17px; }
+.ov-list { margin: .5rem 0; }
+.ov-list summary { cursor: pointer; font-weight: 600; }
+.ov-list ol { list-style: none; margin: .3rem 0 0; padding: 0; }
+.ov-item { padding: .35rem .5rem; border-bottom: 1px solid #e2e8f0; cursor: pointer; font-size: .9rem; }
+.ov-item:hover { background: #f1f5f9; }
+.ov-item small { display: block; color: #64748b; }
+.ov-km { font-weight: 600; margin-right: .3rem; }
