@@ -18,6 +18,7 @@ net als bij de Strava-integratie.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import re
 import threading
@@ -35,17 +36,22 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 30
 
-_ITEM_RE = re.compile(
-    r'route_(?P<id>\d+)"\s+class="routeitem">(?P<body>.*?)'
-    r'(?=route_\d+"\s+class="routeitem"|\Z)',
+# Overzicht (layout van oktober 2026): per route een <a class="kaart routekaart">
+# met data-attributen; het route-id staat in de afbeeldings-URL (/media/routes/5.png).
+_CARD_RE = re.compile(
+    r'<a\s+class="kaart routekaart"\s+href="(?P<href>[^"]+)"(?P<attrs>[^>]*)>(?P<body>.*?)</a>',
     re.S,
 )
-_LINK_RE = re.compile(r'<a href="([^"]+)">([^<]+)</a>')
-_DISTANCE_RE = re.compile(r'dataitem distance">.*?</span>([\d,.]+)\s*km', re.S)
-_ELEVATION_RE = re.compile(r'dataitem hoogte">.*?</span>(\d+)', re.S)
-_RATING_RE = re.compile(r'class="stars" style="width:\s*(\d+)px"')
+_ID_RE = re.compile(r"/media/routes/(?:tegel/)?(\d+)\.")
+_NAME_RE = re.compile(r'<span class="naam">(.*?)</span>', re.S)
+_DATA_KM_RE = re.compile(r'data-km="([\d.,]+)"')
+_DATA_HM_RE = re.compile(r'data-hm="(\d+)"')
+_DATA_RATING_RE = re.compile(r'data-beoordeling="([\d.,]+)"')
 _GPX_LINK_RE = re.compile(r'<a href="([^"]+)"[^>]*id="[^"]*_lnkGPX"')
 _COORD_RE = re.compile(r"\{\s*lat:\s*(-?\d+(?:\.\d+)?),\s*lng:\s*(-?\d+(?:\.\d+)?)\s*\}")
+_MAPDATA_RE = re.compile(
+    r'<script type="application/json" id="routekaartdata">(.*?)</script>', re.S
+)
 _TITLE_RE = re.compile(r"<title>\s*(.*?)\s*</title>", re.S)
 
 _lock = threading.Lock()
@@ -85,32 +91,30 @@ def _nl_float(text: str) -> float | None:
 def _parse_overview(document: str) -> list[RouteboekRouteInfo]:
     club_url = _club_url()
     routes: list[RouteboekRouteInfo] = []
-    seen: set[int] = set()
-    for match in _ITEM_RE.finditer(document):
-        route_id = int(match.group("id"))
-        if route_id in seen:
+    seen: set[str] = set()
+    for match in _CARD_RE.finditer(document):
+        slug = match.group("href").rstrip("/").rsplit("/", 1)[-1]
+        if not re.fullmatch(r"[a-z0-9-]+", slug) or slug in seen:
             continue
-        seen.add(route_id)
-        body = match.group("body")
+        seen.add(slug)
+        attrs, body = match.group("attrs"), match.group("body")
 
-        link = _LINK_RE.search(body)
-        if not link:
-            continue
-        slug = link.group(1).rstrip("/").rsplit("/", 1)[-1]
-        name = html.unescape(link.group(2)).strip()
-
-        distance = _DISTANCE_RE.search(body)
-        elevation = _ELEVATION_RE.search(body)
-        rating = _RATING_RE.search(body)
+        image = _ID_RE.search(body)
+        name_match = _NAME_RE.search(body)
+        name = html.unescape(re.sub(r"<[^>]+>", "", name_match.group(1))).strip() if name_match else ""
+        km = _DATA_KM_RE.search(attrs)
+        hm = _DATA_HM_RE.search(attrs)
+        rating = _DATA_RATING_RE.search(attrs)
+        route_id = image.group(1) if image else slug
 
         routes.append(
             RouteboekRouteInfo(
-                id=str(route_id),
+                id=route_id,
                 slug=slug,
                 name=name or f"Route {route_id}",
-                distance_km=_nl_float(distance.group(1)) if distance else None,
-                elevation_m=int(elevation.group(1)) if elevation else None,
-                rating=round(int(rating.group(1)) / 20, 1) if rating else None,
+                distance_km=_nl_float(km.group(1)) if km else None,
+                elevation_m=int(hm.group(1)) if hm else None,
+                rating=_nl_float(rating.group(1)) if rating else None,
                 url=f"{club_url}/route/{slug}",
             )
         )
@@ -147,7 +151,16 @@ def _gpx_from_map(document: str, slug: str) -> bytes | None:
     Terugval voor routes waarvan het GPX-bestand op routeboek.cc ontbreekt
     (gemeten: 1 van de 166 Stampers-routes). Zonder hoogtegegevens.
     """
-    points = [(float(lat), float(lon)) for lat, lon in _COORD_RE.findall(document)]
+    points: list[tuple[float, float]] = []
+    data = _MAPDATA_RE.search(document)
+    if data:
+        try:
+            raw = json.loads(data.group(1)).get("punten") or []
+            points = [(float(p[0]), float(p[1])) for p in raw]
+        except (ValueError, TypeError, IndexError, AttributeError):
+            points = []
+    if not points:  # oudere layout
+        points = [(float(lat), float(lon)) for lat, lon in _COORD_RE.findall(document)]
     if len(points) < 2:
         return None
     title = _TITLE_RE.search(document)

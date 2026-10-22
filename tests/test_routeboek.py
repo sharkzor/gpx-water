@@ -11,21 +11,14 @@ from app.services import routeboek_service, waterpoints_nl
 from app.services.routeboek_service import RouteboekError
 
 _OVERVIEW_HTML = """
-<div id="route_5" class="routeitem">
-<a href="/club/stampers/route/30k-trainingsrondje-dirk">30k Trainingsrondje Dirk</a>
-<div class="routedatawrapper">
-<span class="dataitem distance"><span class="bikeicon road">x</span>29,6 km</span>
-<span class="dataitem hoogte"><span>x</span>11</span>
-<div class="stars" style="width: 70px"></div>
-</div>
-</div>
-<div id="route_209" class="routeitem">
-<a href="/club/stampers/route/rondje-graaf">Rondje Graaf</a>
-<div class="routedatawrapper">
-<span class="dataitem distance"><span class="bikeicon road">x</span>42,6 km</span>
-<span class="dataitem hoogte"><span>x</span>22</span>
-</div>
-</div>
+<a class="kaart routekaart" href="/club/stampers/route/30k-trainingsrondje-dirk" data-km="29.6" data-hm="11" data-beoordeling="3.5" data-zoek="x">
+<picture><img src="/media/routes/tegel/5.png?v=1" alt="" /></picture>
+<span class="kaarttekst"><span class="naam">30k Trainingsrondje Dirk</span></span>
+</a>
+<a class="kaart routekaart" href="/club/stampers/route/rondje-graaf" data-km="42.6" data-hm="22" data-beoordeling="" data-zoek="y">
+<picture><img src="/media/routes/tegel/209.png?v=1" alt="" /></picture>
+<span class="kaarttekst"><span class="naam">Rondje Graaf</span></span>
+</a>
 """
 
 _DETAIL_HTML = """
@@ -115,8 +108,7 @@ def test_export_gpx_zonder_download_link_en_kaart_geeft_fout(monkeypatch) -> Non
 
 _MAP_HTML = _DETAIL_HTML + """
 <title>Routeboek.cc - Gravel: Huize Scherpenzeel  V2</title>
-<script>var path = [{ lat: 52.08755, lng: 5.04676 }, { lat: 52.08836, lng: 5.04611 },
-{ lat: 52.09000, lng: 5.05000 }];</script>
+<script type="application/json" id="routekaartdata">{"punten":[[52.08755,5.04676],[52.08836,5.04611],[52.09,5.05]]}</script>
 """
 
 
