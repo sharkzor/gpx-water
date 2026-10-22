@@ -26,6 +26,7 @@ def _record(
     cause: str = "Asfaltering",
     authority: str = "Gemeente Testdorp",
     detour: str | None = "Omleiding via de Dorpsstraat",
+    severity: str = "medium",
 ) -> str:
     detour_xml = (
         f"<reroutingItineraryDescription><values><value>{detour}</value>"
@@ -35,6 +36,7 @@ def _record(
     )
     return f"""
     <situation>
+    <overallSeverity>{severity}</overallSeverity>
     <situationRecord>
       <validity><validityTimeSpecification>
         <overallStartTime>{start}T05:00:00Z</overallStartTime>
@@ -277,7 +279,7 @@ def test_refresh_endpoint(monkeypatch, client: TestClient) -> None:
 
 
 def test_dubbele_meldingen_worden_samengevoegd(client: TestClient, sample_gpx: str) -> None:
-    """Dezelfde klus wordt vaak twee keer gemeld (heen- en terugrichting)."""
+    """Dezelfde klus wordt vaak meermaals gemeld (richting, fase, gemeentegrens)."""
     from app.services import route_service
     from app.services.gpx_service import extract_route_points, parse_gpx
 
@@ -288,7 +290,7 @@ def test_dubbele_meldingen_worden_samengevoegd(client: TestClient, sample_gpx: s
         RoadWork(lat=52.3102, lon=4.9004, cause="Riolering", authority="Gemeente X"),
     ]
     kept = route_service.attach_road_works(index, doubles, 250)
-    assert len(kept) == 2, "gelijke oorzaak op dezelfde plek telt als een melding"
+    assert len(kept) == 1, "meldingen op dezelfde plek tellen als een melding"
 
 
 def test_oorzaak_en_coordinaat_uit_verschillende_records(monkeypatch, feed_xml) -> None:
@@ -300,7 +302,7 @@ def test_oorzaak_en_coordinaat_uit_verschillende_records(monkeypatch, feed_xml) 
     settings = get_settings()
     combined = (
         f"<?xml version='1.0' encoding='UTF-8'?><d2LogicalModel {NS}><payloadPublication>"
-        "<situation>"
+        "<situation><overallSeverity>medium</overallSeverity>"
         "  <situationRecord>"  # afsluiting: wel oorzaak, geen coordinaat
         "    <vehicleType>bicycle</vehicleType>"
         "    <cause><causeDescription><values><value>Onderhoud fietspaden</value>"
@@ -368,22 +370,21 @@ def test_reeks_op_hetzelfde_stuk_weg_wordt_een_melding() -> None:
     assert merged[0].distance_to_route_m == 15  # dichtstbijzijnde blijft over
 
 
-def test_samenvoegen_breekt_bij_groot_gat_of_andere_klus() -> None:
+def test_samenvoegen_breekt_bij_groot_gat_en_houdt_zwaarste() -> None:
     from app.services.route_service import _merge_road_works
 
     works = [
         _at(10.0),
-        _at(10.1, cause="Riolering"),       # andere oorzaak: eigen melding
-        _at(10.15, authority="Gemeente Y"), # andere instantie: eigen melding
-        _at(10.2),                          # sluit aan op de eerste reeks
-        _at(11.0),                          # 700 m verder: nieuwe reeks
+        _at(10.1, cause="Riolering"),       # andere oorzaak maar zelfde plek: een melding
+        _at(10.15, authority="Gemeente Y"),
+        _at(10.2),                          # sluit aan op dezelfde reeks
+        _at(11.0),                          # 800 m verder: nieuwe reeks
     ]
+    works[2].impact = "closed"              # de zwaarste van de reeks blijft over
     merged = _merge_road_works(works, 0.25)
-    assert [(w.along_route_km, w.cause, w.authority) for w in merged] == [
-        (10.0, "Asfaltering", "Gemeente X"),
-        (10.1, "Riolering", "Gemeente X"),
-        (10.15, "Asfaltering", "Gemeente Y"),
-        (11.0, "Asfaltering", "Gemeente X"),
+    assert [(w.along_route_km, w.authority, w.impact) for w in merged] == [
+        (10.15, "Gemeente Y", "closed"),
+        (11.0, "Gemeente X", "hinder"),
     ]
 
 
@@ -428,21 +429,30 @@ _XSI = 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
 
 def _feed_with_closure(point: tuple[float, float], closure: list[tuple[float, float]],
                        detour: list[tuple[float, float]] | None = None,
-                       closure_vehicle: str | None = None) -> str:
+                       closure_vehicle: str | None = None,
+                       severity: str = "medium", bike_mention: bool = True,
+                       hindrance: str | None = None) -> str:
     pos = " ".join(f"{lat} {lon}" for lat, lon in closure)
     detour_pos = " ".join(f"{lat} {lon}" for lat, lon in (detour or []))
     vehicle = f"<vehicleType>{closure_vehicle}</vehicleType>" if closure_vehicle else ""
+    maintenance_vehicle = "<vehicleType>bicycle</vehicleType>" if bike_mention else ""
+    hindrance_xml = (
+        f"<roadworkHindranceCategory>{hindrance}</roadworkHindranceCategory>"
+        if hindrance else ""
+    )
     return (
         f"<?xml version='1.0' encoding='UTF-8'?><d2LogicalModel {NS} {_XSI}><payloadPublication>"
-        "<situation>"
+        f"<situation><overallSeverity>{severity}</overallSeverity>"
         '  <situationRecord xsi:type="MaintenanceWorks">'
-        "    <vehicleType>bicycle</vehicleType>"
+        f"    {maintenance_vehicle}{hindrance_xml}"
         "    <cause><causeDescription><values><value>Afsluiting fietspad</value>"
         "    </values></causeDescription></cause>"
         f"    <pointCoordinates><latitude>{point[0]}</latitude>"
         f"    <longitude>{point[1]}</longitude></pointCoordinates>"
         "  </situationRecord>"
         '  <situationRecord xsi:type="RoadOrCarriagewayOrLaneManagement">'
+        "    <roadOrCarriagewayOrLaneManagementType>carriagewayClosures"
+        "    </roadOrCarriagewayOrLaneManagementType>"
         f"    {vehicle}<gmlLineString><posList>{pos}</posList></gmlLineString>"
         "  </situationRecord>"
         '  <situationRecord xsi:type="ReroutingManagement">'
@@ -526,3 +536,75 @@ def test_bbox_vindt_melding_via_afgesloten_stuk() -> None:
     with mock.patch.object(roadworks_nl, "get_road_works", return_value=works):
         found = roadworks_nl.load_road_works_near([(52.30, 4.9), (52.40, 4.9)], 100, date(2026, 9, 1))
     assert len(found) == 1
+
+
+# -- Relevantie voor fietsers en werkperiodes ------------------------------------
+
+_LINE = [(52.3100, 4.9000), (52.3110, 4.9000)]
+
+
+def test_afsluiting_voor_fietsers_telt_altijd_als_afgesloten(monkeypatch) -> None:
+    works = _load(monkeypatch, _feed_with_closure(
+        (52.31, 4.9), closure=_LINE, closure_vehicle="bicycle", severity="low",
+    ))
+    assert [w.impact for w in works] == ["closed"]
+
+
+def test_kleine_hinder_met_alleen_omleiding_valt_af(monkeypatch) -> None:
+    """Bermonderhoud met een omleidingsbord ook voor fietsers: geen fietsprobleem."""
+    works = _load(monkeypatch, _feed_with_closure(
+        (52.31, 4.9), closure=_LINE, closure_vehicle="car", severity="low",
+        hindrance="hindranceCategoryE",
+    ))
+    assert works == []
+
+
+def test_fiets_genoemd_met_ernstige_hinder_blijft(monkeypatch) -> None:
+    works = _load(monkeypatch, _feed_with_closure(
+        (52.31, 4.9), closure=_LINE, closure_vehicle="car", severity="high",
+    ))
+    assert [w.impact for w in works] == ["hinder"]
+
+
+def test_afsluiting_van_alle_verkeer_is_mogelijk_bij_hoge_ernst(monkeypatch) -> None:
+    """De N214-situatie: asfalteren, hele rijbaan dicht, fiets niet apart genoemd."""
+    ernstig = _load(monkeypatch, _feed_with_closure(
+        (52.31, 4.9), closure=_LINE, severity="high", bike_mention=False,
+    ))
+    assert [w.impact for w in ernstig] == ["possible"]
+    licht = _load(monkeypatch, _feed_with_closure(
+        (52.31, 4.9), closure=_LINE, severity="low", bike_mention=False,
+    ))
+    assert licht == []
+
+
+def test_mogelijke_afsluiting_telt_alleen_als_route_erlangs_loopt() -> None:
+    from app.services.route_service import attach_road_works
+
+    kruising = RoadWork(lat=52.31, lon=4.9, impact="possible",
+                        lines=[[[52.3100, 4.8990], [52.3100, 4.9010]]])  # dwars over de route
+    langs = RoadWork(lat=52.33, lon=4.9, impact="possible",
+                     lines=[[[52.3300, 4.9000], [52.3320, 4.9000]]])     # ~220 m parallel
+    expliciet = RoadWork(lat=52.35, lon=4.9, impact="closed",
+                         lines=[[[52.3500, 4.8990], [52.3500, 4.9010]]])  # kruising, maar voor fietsers
+    hits = attach_road_works(_index(), [kruising, langs, expliciet], radius_m=100)
+    assert [w.impact for w in hits] == ["possible", "closed"]
+    assert hits[0].along_route_km == pytest.approx(3.3, abs=0.2)
+
+
+def test_werkperiodes_gaan_voor_het_ruime_venster(monkeypatch) -> None:
+    xml = _feed_with_closure((52.31, 4.9), closure=_LINE, closure_vehicle="bicycle")
+    xml = xml.replace(
+        "<situationRecord xsi:type=\"MaintenanceWorks\">",
+        '<situationRecord xsi:type="MaintenanceWorks"><validity><validityTimeSpecification>'
+        "<overallStartTime>2026-01-01T05:00:00Z</overallStartTime>"
+        "<overallEndTime>2026-12-31T15:00:00Z</overallEndTime>"
+        "<validPeriod><startOfPeriod>2026-10-19T01:00:00Z</startOfPeriod>"
+        "<endOfPeriod>2026-11-06T19:00:00Z</endOfPeriod></validPeriod>"
+        "</validityTimeSpecification></validity>",
+        1,
+    )
+    [work] = _load(monkeypatch, xml)
+    assert work.periods == [["2026-10-19", "2026-11-06"]]
+    assert roadworks_nl.is_active_on(work, date(2026, 10, 25)) is True
+    assert roadworks_nl.is_active_on(work, date(2026, 7, 1)) is False

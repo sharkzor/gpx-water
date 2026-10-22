@@ -294,7 +294,8 @@ instantie mét jouw Strava-koppeling en een publieke instantie zonder.
 | `ROADWORKS_RADIUS_M` | `100` | Terugval voor meldingen zonder afgesloten stuk: afstand van het punt tot de route |
 | `ROADWORKS_CACHE_TTL_SECONDS` | `86400` | Verversfrequentie NDW-feed |
 | `ROADWORKS_URL` | NDW planningsfeed | Bron-URL |
-| `ROADWORKS_MERGE_GAP_M` | `250` | Opeenvolgende meldingen van dezelfde klus binnen deze afstand worden één waarschuwing |
+| `ROADWORKS_MERGE_GAP_M` | `250` | Opeenvolgende meldingen binnen deze afstand worden één waarschuwing |
+| `ROADWORKS_MIN_OVERLAP_M` | `100` | Bij "alle verkeer afgesloten": minimaal zoveel route langs de weg, anders telt het als kruising |
 | `BACKGROUND_REFRESH` | `true` | Caches (drinkwaterpunten.nl, NDW) op de achtergrond vers houden |
 | `BACKGROUND_REFRESH_INTERVAL_SECONDS` | `3600` | Hoe vaak de achtergrondlus controleert of een cache verouderd is |
 | `LEGALITY_ENABLED` | `true` | Controle op verboden paden aan/uit (uit = geen kaartdownload) |
@@ -445,14 +446,40 @@ drinkwaterpunten gewoon door.
   je route over de rijbaan loopt. Verlaag `ROADWORKS_LINE_TOLERANCE_M` als je
   daar last van hebt; verhoog hem als je meldingen mist.
 
+### Welke meldingen tellen mee
+
+De NDW-feed bevat ook veel klusjes die fietsers niet raken (bermonderhoud,
+wegwerk met een omleidingsbord voor alle verkeer). Een melding komt daarom
+alleen in het resultaat als hij in een van deze groepen valt:
+
+| Effect | Wanneer | Weergave |
+|---|---|---|
+| **Afgesloten voor fietsers** | een afsluiting die uitdrukkelijk fietsers (of bromfietsers) noemt | rood |
+| **Hinder of omleiding** | fietsers worden genoemd en de hinder is categorie A–C of de ernst `medium` of hoger | oranje |
+| **Mogelijk afgesloten** | alle verkeer is afgesloten bij ernst `high` of hinder A–C én de route loopt over die weg (minstens `ROADWORKS_MIN_OVERLAP_M`, 100 m); een kruising telt niet | oranje |
+
+Kleine hinder (categorie D/E, ernst `low`) waarbij alleen een omleiding voor
+auto's en fietsers genoemd wordt, valt af. De werkperiodes (`validPeriod`) gaan
+voor het ruime begin-/einddatumvenster, zodat een klus die jaren loopt maar
+maar enkele weken echt werkt niet de hele tijd meldt.
+
 ### Samenvoegen van meldingen
 
-Gemeenten melden één project vaak in stukken: per straatdeel, per fase of per
-rijrichting. Meldingen met dezelfde oorzaak en instantie die elkaar langs de
-route binnen `ROADWORKS_MERGE_GAP_M` (250 m) opvolgen, worden samengevoegd tot
-één waarschuwing. Het gat telt vanaf de laatste melding van de reeks, zodat
-een lang werkvak niet halverwege breekt. De melding die het dichtst bij de
-route ligt blijft over.
+Gemeenten melden één project vaak in stukken: per straatdeel, fase, rijrichting
+of gemeente (een brug op de gemeentegrens). Meldingen die elkaar langs de route
+binnen `ROADWORKS_MERGE_GAP_M` (250 m) opvolgen, worden samengevoegd tot één
+waarschuwing. Het gat telt vanaf de laatste melding van de reeks, zodat een lang
+werkvak niet halverwege breekt. De zwaarste melding blijft over, bij gelijke
+zwaarte de dichtstbijzijnde.
+
+### Routeoverzicht
+
+Na verwerking toont elke pagina één overzicht met het hoogteprofiel en daarop
+de uitgevoerde controles: 💧 waterpunten, ⚠️ werkzaamheden (stippellijn),
+🚫 verboden paden (balk onderaan) en 🌧️ regen (blauwe band). Boven het profiel
+staat een samenvatting zoals "Mogelijk werkzaamheden bij km 84, 89 en 107".
+Klik op een icoon om op de kaart naar die plek te gaan. Heeft de route geen
+hoogtegegevens, dan toont het overzicht een vlakke lijn met dezelfde iconen.
 
 ### In de GPX
 
@@ -723,7 +750,8 @@ Tip: gebruikt jouw firmware liever een ander symbool of geen emoji, pas dan
 | `ROADWORKS_RADIUS_M` | `100` | Terugval voor meldingen zonder afgesloten stuk: afstand van het punt tot de route |
 | `ROADWORKS_CACHE_TTL_SECONDS` | `86400` | Verversfrequentie NDW-feed |
 | `ROADWORKS_URL` | NDW planningsfeed | Bron-URL |
-| `ROADWORKS_MERGE_GAP_M` | `250` | Opeenvolgende meldingen van dezelfde klus binnen deze afstand worden één waarschuwing |
+| `ROADWORKS_MERGE_GAP_M` | `250` | Opeenvolgende meldingen binnen deze afstand worden één waarschuwing |
+| `ROADWORKS_MIN_OVERLAP_M` | `100` | Bij "alle verkeer afgesloten": minimaal zoveel route langs de weg, anders telt het als kruising |
 | `BACKGROUND_REFRESH` | `true` | Caches (drinkwaterpunten.nl, NDW) op de achtergrond vers houden |
 | `BACKGROUND_REFRESH_INTERVAL_SECONDS` | `3600` | Hoe vaak de achtergrondlus controleert of een cache verouderd is |
 | `LEGALITY_ENABLED` | `true` | Controle op verboden paden aan/uit (uit = geen kaartdownload) |

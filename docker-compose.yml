@@ -42,6 +42,7 @@ services:
       ROADWORKS_RADIUS_M: "${ROADWORKS_RADIUS_M:-100}"
       ROADWORKS_CACHE_TTL_SECONDS: "${ROADWORKS_CACHE_TTL_SECONDS:-86400}"
       ROADWORKS_MERGE_GAP_M: "${ROADWORKS_MERGE_GAP_M:-250}"
+      ROADWORKS_MIN_OVERLAP_M: "${ROADWORKS_MIN_OVERLAP_M:-100}"
       BACKGROUND_REFRESH: "${BACKGROUND_REFRESH:-true}"
       # Controle op verboden paden: eigen OSM-wegenkaart (~450 MB in ./data/osm,
       # maandelijks opnieuw opgebouwd; piek ~2,5 GB geheugen tijdens het bouwen)

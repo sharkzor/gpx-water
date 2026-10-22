@@ -41,13 +41,31 @@ _XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 #: (ReroutingManagement) heeft ook lijnen, maar dat is juist de weg die open is.
 _CLOSURE_RECORD = "RoadOrCarriagewayOrLaneManagement"
 
+#: Beheertypes die een rijbaan of weg echt dichtzetten (rijstrookafsluitingen
+#: laten een fietspad meestal open).
+_BLOCKING_TYPES = {"roadClosed", "carriagewayClosures"}
+
+#: Hinder (A = zwaarst) en ernst waarbij een melding de moeite waard is.
+_NOTABLE_HINDRANCE = {"hindranceCategoryA", "hindranceCategoryB", "hindranceCategoryC"}
+_SEVERE = {"high", "highest"}
+_NOTABLE_SEVERITY = _SEVERE | {"medium"}
+
+#: Effect op fietsers, van zwaar naar licht.
+IMPACT_RANK = {"closed": 0, "possible": 1, "hinder": 2}
+IMPACT_LABEL = {
+    "closed": "Afgesloten voor fietsers",
+    "possible": "Mogelijk afgesloten (alle verkeer)",
+    "hinder": "Hinder of omleiding voor fietsers",
+}
+
 def _local(tag: str) -> str:
     """Strip de XML-namespace van een tagnaam."""
     return re.sub(r"\{.*\}", "", tag)
 
 
-#: Ophogen als het cacheformaat wijzigt; v2 voegde de afgesloten stukken toe.
-_CACHE_VERSION = 2
+#: Ophogen als het cacheformaat wijzigt; v2 voegde de afgesloten stukken toe,
+#: v3 de ernst, het effect op fietsers en de echte werkperiodes.
+_CACHE_VERSION = 3
 
 
 def _cache_file() -> Path:
@@ -167,6 +185,89 @@ def _closure_lines(situation: ET.Element) -> list[list[list[float]]]:
     return lines
 
 
+def _record_vehicles(record: ET.Element) -> set[str]:
+    return {
+        (c.text or "").strip()
+        for c in record.iter()
+        if _local(c.tag) == "vehicleType"
+    }
+
+
+def _records(situation: ET.Element) -> list[ET.Element]:
+    return [
+        r
+        for r in situation
+        if _local(r.tag) == "situationRecord"
+    ]
+
+
+def _classify(situation: ET.Element, vehicles: set[str]) -> str | None:
+    """Bepaal hoe een melding fietsers raakt; ``None`` = niet relevant.
+
+    * ``closed``: een afsluiting die uitdrukkelijk ook fietsers noemt.
+    * ``hinder``: fietsers worden genoemd (bijv. een omleiding) en de hinder is
+      meer dan minimaal; kleine klussen zoals bermonderhoud vallen af.
+    * ``possible``: alle verkeer is afgesloten op een ernstige klus. Dat raakt
+      fietsers alleen als de route over die weg zelf loopt; dat controleert
+      de routekoppeling.
+    """
+    closure_bike = closure_all = False
+    hindrance: set[str] = set()
+    for record in _records(situation):
+        kind = record.get(_XSI_TYPE, "").split(":")[-1]
+        for node in record.iter():
+            if _local(node.tag) == "roadworkHindranceCategory" and node.text:
+                hindrance.add(node.text.strip())
+        if kind != _CLOSURE_RECORD:
+            continue
+        types = {
+            (n.text or "").strip()
+            for n in record.iter()
+            if _local(n.tag) == "roadOrCarriagewayOrLaneManagementType"
+        }
+        if not types & _BLOCKING_TYPES:
+            continue
+        record_vehicles = _record_vehicles(record)
+        if record_vehicles & _BIKE_VEHICLES:
+            closure_bike = True
+        elif not record_vehicles:
+            closure_all = True
+
+    severity = _first_text(situation, "overallSeverity") or ""
+    notable_hindrance = bool(hindrance & _NOTABLE_HINDRANCE)
+    if closure_bike:
+        return "closed"
+    if vehicles & _BIKE_VEHICLES and (
+        notable_hindrance or severity in _NOTABLE_SEVERITY
+    ):
+        return "hinder"
+    if closure_all and (severity in _SEVERE or notable_hindrance):
+        return "possible"
+    return None
+
+
+def _periods(situation: ET.Element) -> list[list[str]]:
+    """De werkelijke werkperiodes als [[van, tot], ...] (datums).
+
+    Het ruime overall-venster van een klus kan jaren beslaan terwijl er maar
+    een paar weken echt gewerkt wordt; de losse periodes zijn nauwkeuriger.
+    """
+    found: set[tuple[str, str]] = set()
+    for record in _records(situation):
+        for period in record.iter():
+            if _local(period.tag) != "validPeriod":
+                continue
+            start = end = None
+            for sub in period:
+                if _local(sub.tag) == "startOfPeriod":
+                    start = _iso_date(sub.text)
+                elif _local(sub.tag) == "endOfPeriod":
+                    end = _iso_date(sub.text)
+            if start and end:
+                found.add((start, end))
+    return [list(p) for p in sorted(found)]
+
+
 def _parse_situation(situation: ET.Element) -> dict | None:
     """Zet een DATEX II <situation> om naar een compacte dict.
 
@@ -181,7 +282,8 @@ def _parse_situation(situation: ET.Element) -> dict | None:
         for c in situation.iter()
         if _local(c.tag) == "vehicleType"
     }
-    if not vehicles & _BIKE_VEHICLES:
+    impact = _classify(situation, vehicles)
+    if impact is None:
         return None
 
     lat = lon = None
@@ -223,6 +325,9 @@ def _parse_situation(situation: ET.Element) -> dict | None:
         "authority": _first_text(situation, "sourceName"),
         "detour": _useful_detour(_first_text(situation, "reroutingItineraryDescription")),
         "lines": lines or None,
+        "impact": impact,
+        "severity": _first_text(situation, "overallSeverity"),
+        "periods": _periods(situation) or None,
     }
     return {k: v for k, v in entry.items() if v is not None}
 
@@ -302,10 +407,13 @@ def get_road_works(force_refresh: bool = False) -> list[RoadWork]:
 def is_active_on(work: RoadWork, day: date) -> bool:
     """Geldt deze melding op de opgegeven dag?
 
-    Meldingen zonder begin- of einddatum worden meegenomen: liever een
-    waarschuwing te veel dan een gemiste omleiding.
+    Met werkperiodes telt alleen een dag binnen een van die periodes; anders
+    het ruime begin-/einddatumvenster. Meldingen zonder enige datum worden
+    meegenomen: liever een waarschuwing te veel dan een gemiste omleiding.
     """
     iso = day.isoformat()
+    if work.periods:
+        return any(start <= iso <= end for start, end in work.periods)
     if work.start and work.start > iso:
         return False
     if work.end and work.end < iso:

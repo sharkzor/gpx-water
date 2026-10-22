@@ -6,6 +6,7 @@ import pytest
 
 from app.services import gpx_service, route_service, waterpoints_nl
 from app.services.geo import haversine_m, in_netherlands, nl_share
+from app.models.schemas import RoutePoint
 from app.services.route_service import RouteIndex
 
 
@@ -202,3 +203,18 @@ def test_website_alleen_http_links() -> None:
                 "java\tscript:alert(1)", "//evil.example", "https://", "ftp://x.nl"):
         assert safe_http_url(bad) is None, bad
     assert WaterPoint(lat=52, lon=5, website="javascript:alert(1)").website is None
+
+
+def test_hoogteprofiel_is_gedund_en_loopt_op_met_km() -> None:
+    points = [RoutePoint(lat=52.0 + i * 0.001, lon=5.0, ele=float(i % 7)) for i in range(1000)]
+    index = RouteIndex(points)
+    profile = index.profile(max_points=100)
+    assert len(profile) == 100
+    assert profile[0][0] == 0.0
+    assert profile[-1][0] == pytest.approx(index.total_distance_m / 1000, abs=0.01)
+    assert [p[0] for p in profile] == sorted(p[0] for p in profile)
+
+
+def test_hoogteprofiel_leeg_zonder_hoogtegegevens() -> None:
+    index = RouteIndex([RoutePoint(lat=52.0 + i * 0.001, lon=5.0) for i in range(5)])
+    assert index.profile() == []

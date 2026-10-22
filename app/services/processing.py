@@ -277,6 +277,7 @@ def process_gpx(
         water_checked=check_water,
         stats=stats,
         route=[[p.lat, p.lon] for p in route_points],
+        profile=index.profile(),
         water_points=[
             WaterPointOut(
                 lat=wp.lat,
@@ -305,6 +306,8 @@ def process_gpx(
                 authority=w.authority,
                 detour=w.detour,
                 lines=w.lines,
+                impact=w.impact,
+                severity=w.severity,
                 distance_to_route_m=w.distance_to_route_m,
                 along_route_km=w.along_route_km,
             )

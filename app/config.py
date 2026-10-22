@@ -86,6 +86,8 @@ class Settings:
         # Meldingen van dezelfde klus die elkaar langs de route binnen deze
         # afstand opvolgen worden samengevoegd tot een enkele waarschuwing.
         self.roadworks_merge_gap_m: int = _int("ROADWORKS_MERGE_GAP_M", 250)
+        # Bij "alle verkeer afgesloten": minimaal zoveel meter route langs de weg
+        self.roadworks_min_overlap_m: int = _int("ROADWORKS_MIN_OVERLAP_M", 100)
 
         # Controle op verboden paden (lokale OSM-wegenkaart, alleen Nederland)
         self.legality_enabled: bool = os.getenv(

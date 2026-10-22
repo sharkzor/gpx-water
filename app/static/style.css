@@ -354,3 +354,16 @@ code {
 .check-card.warn { border-left-color: #ea580c; background: #fff7ed; }
 .check-card.bad { border-left-color: #dc2626; background: #fef2f2; }
 .check-card.all-ok { border-left-color: #16a34a; background: #dcfce7; align-items: center; }
+
+/* Gecombineerd routeoverzicht */
+.overview { margin: .6rem 0; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; margin: 0 0 .4rem; padding: 0; }
+.ov-chip { font-size: .85rem; padding: .2rem .55rem; border-radius: 999px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.ov-chip.ov-warn { background: #fef3c7; border-color: #fcd34d; }
+.ov-chip.ov-ok { background: #dcfce7; border-color: #86efac; }
+.ov-svg { width: 100%; height: auto; display: block; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; }
+.ov-icon { font-size: 14px; }
+.ov-icon.ov-small { font-size: 10px; }
+.ov-tick { font-size: 9px; fill: #64748b; }
+.ov-hit { cursor: pointer; }
+.ov-hit:hover text { font-size: 17px; }

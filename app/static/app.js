@@ -29,6 +29,7 @@
   });
 
   Checks.init(submitBtn);
+  Overview.bind(document.getElementById("check-cards"), map);
 
   function setStatus(text, isError) {
     statusEl.textContent = text;
@@ -60,15 +61,6 @@
     return rows.join("<br>");
   }
 
-  function worksPopup(w) {
-    const rows = [`<strong>⚠️ ${esc(w.cause || "Wegwerkzaamheden")}</strong>`];
-    rows.push(`km ${w.along_route_km.toFixed(1)} · ${Math.round(w.distance_to_route_m)} m van route`);
-    if (w.authority) rows.push(esc(w.authority));
-    if (w.start || w.end) rows.push(`Periode: ${esc(w.start || "?")} t/m ${esc(w.end || "?")}`);
-    if (w.detour) rows.push(`<em>${esc(w.detour)}</em>`);
-    return rows.join("<br>");
-  }
-
   function renderRoadWorks(data) {
     const works = data.road_works || [];
     const wrap = document.getElementById("rw-list-wrap");
@@ -77,7 +69,7 @@
       (w.lines || []).forEach((ln) => {
         L.polyline(ln, { color: "#f59e0b", weight: 7, opacity: 0.85, dashArray: "8 6" }).addTo(layers);
       });
-      L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(worksPopup(w)).addTo(layers);
+      L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(Overview.worksPopup(w)).addTo(layers);
     });
 
     const list = document.getElementById("rw-list");
@@ -86,7 +78,7 @@
     works.forEach((w) => {
       const li = document.createElement("li");
       li.innerHTML = `km ${w.along_route_km.toFixed(1)} – ${esc(w.cause || "Wegwerkzaamheden")}` +
-        `<small>${esc(w.authority || "")} · ${esc(w.start || "?")} t/m ${esc(w.end || "?")}</small>`;
+        `<small>${esc((Overview.IMPACT[w.impact] || Overview.IMPACT.hinder).label)} · ${esc(w.authority || "")} · ${esc(w.start || "?")} t/m ${esc(w.end || "?")}</small>`;
       li.style.cursor = "pointer";
       li.addEventListener("click", () => map.setView([w.lat, w.lon], 16));
       list.appendChild(li);
@@ -123,7 +115,7 @@
     map.fitBounds(line.getBounds(), { padding: [25, 25] });
 
     const s = data.stats;
-    document.getElementById("check-cards").innerHTML = Checks.cards(data);
+    document.getElementById("check-cards").innerHTML = Checks.cards(data) + Overview.html(data);
     document.querySelectorAll(".water-stat").forEach((node) => { node.hidden = !data.water_checked; });
     document.getElementById("stat-distance").textContent = `${s.total_distance_km.toFixed(1)} km`;
     document.getElementById("stat-count").textContent = s.water_point_count;

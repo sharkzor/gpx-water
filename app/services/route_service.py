@@ -14,6 +14,8 @@ from app.config import get_settings
 from app.models.schemas import RoadWork, RoutePoint, RouteStats, WaterPoint
 from app.services.geo import LocalProjection
 
+from app.services.roadworks_nl import IMPACT_RANK
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,22 @@ class RouteIndex:
         for a, b in zip(coords, coords[1:]):
             total += great_circle(a, b).meters
         return total
+
+    def profile(self, max_points: int = 300) -> list[list[float]]:
+        """Hoogteprofiel als [[km, hoogte m], ...], gedund tot `max_points`.
+
+        Leeg als de route geen hoogtegegevens heeft. Punten zonder hoogte
+        worden overgeslagen.
+        """
+        samples = [
+            (round(cum * self._scale / 1000.0, 3), round(point.ele, 1))
+            for cum, point in zip(self._cum, self.points)
+            if point.ele is not None
+        ]
+        if len(samples) > max_points:
+            step = (len(samples) - 1) / (max_points - 1)
+            samples = [samples[round(i * step)] for i in range(max_points)]
+        return [list(sample) for sample in samples]
 
     def locate(self, lat: float, lon: float) -> tuple[float, float]:
         """Geef (afstand tot route in m, positie langs route in m)."""
@@ -166,6 +184,12 @@ def attach_road_works(
             hit = _nearest_on_closure(index, work.lines)
             if hit is None or hit[0] > tolerance:
                 continue
+            if work.impact == "possible" and (
+                _overlap_m(index, work.lines, tolerance)
+                < get_settings().roadworks_min_overlap_m
+            ):
+                # Alleen een kruising: de route loopt niet over de afgesloten weg zelf
+                continue
             distance_m, (work.lat, work.lon) = hit
             by_line += 1
         else:
@@ -190,6 +214,19 @@ def attach_road_works(
     return _merge_road_works(selected, get_settings().roadworks_merge_gap_m / 1000.0)
 
 
+def _overlap_m(
+    index: RouteIndex, lines: Sequence[Sequence[Sequence[float]]], tolerance_m: float
+) -> float:
+    """Lengte van de route die binnen `tolerance_m` langs het afgesloten stuk loopt."""
+    total = 0.0
+    for line in lines:
+        if len(line) < 2:
+            continue
+        geometry = LineString(index.projection.to_xy_many([(p[0], p[1]) for p in line]))
+        total += geometry.buffer(tolerance_m).intersection(index.line).length
+    return total
+
+
 def _nearest_on_closure(
     index: RouteIndex, lines: Sequence[Sequence[Sequence[float]]]
 ) -> tuple[float, tuple[float, float]] | None:
@@ -210,33 +247,33 @@ def _nearest_on_closure(
 def _merge_road_works(
     road_works: Sequence[RoadWork], max_gap_km: float
 ) -> list[RoadWork]:
-    """Voeg meldingen van dezelfde klus langs hetzelfde stuk weg samen.
+    """Voeg meldingen op dezelfde plek langs de route samen tot één.
 
-    Gemeenten melden een project vaak in stukken: per straatdeel, per fase of
-    per rijrichting. Opeenvolgende meldingen met dezelfde oorzaak en instantie
-    worden daarom een reeks zolang het gat tot de vorige kleiner is dan
-    `max_gap_km`. Het gat telt vanaf het laatste lid van de reeks, zodat een
-    lang werkvak niet halverwege breekt. De melding die het dichtst bij de
-    route ligt blijft over als representant.
+    Een klus wordt vaak in stukken gemeld (per straatdeel, fase, rijrichting of
+    zelfs per gemeente, zoals een brug op de gemeentegrens). Meldingen die
+    minder dan `max_gap_km` na de vorige komen vormen daarom een reeks. Het gat
+    telt vanaf het laatste lid, zodat een lang werkvak niet halverwege breekt.
+    De zwaarste melding blijft over, bij gelijke zwaarte de dichtstbijzijnde.
     """
     groups: list[list[RoadWork]] = []
-    open_group: dict[tuple[str | None, str | None], list[RoadWork]] = {}
     for work in sorted(road_works, key=lambda w: w.along_route_km):
-        key = (work.cause, work.authority)
-        group = open_group.get(key)
-        if group and work.along_route_km - group[-1].along_route_km <= max_gap_km:
-            group.append(work)
-            continue
-        group = [work]
-        groups.append(group)
-        open_group[key] = group
+        if groups and work.along_route_km - groups[-1][-1].along_route_km <= max_gap_km:
+            groups[-1].append(work)
+        else:
+            groups.append([work])
 
-    merged = [min(group, key=lambda w: w.distance_to_route_m) for group in groups]
-    merged.sort(key=lambda w: (w.along_route_km, w.distance_to_route_m))
+    merged = [
+        min(
+            group,
+            key=lambda w: (IMPACT_RANK.get(w.impact, 9), w.distance_to_route_m),
+        )
+        for group in groups
+    ]
     removed = len(road_works) - len(merged)
     if removed:
         logger.info("%d wegwerkzaamheden op hetzelfde stuk weg samengevoegd", removed)
     return merged
+
 
 
 def build_stats(

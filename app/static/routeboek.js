@@ -129,15 +129,10 @@
           .addTo(layers);
       });
       (r.road_works || []).forEach((w) => {
-        const rows = [`<strong>⚠️ ${esc(w.cause || "Wegwerkzaamheden")}</strong>`,
-          `km ${w.along_route_km.toFixed(1)} · ${Math.round(w.distance_to_route_m)} m van route`];
-        if (w.authority) rows.push(esc(w.authority));
-        if (w.start || w.end) rows.push(`Periode: ${esc(w.start || "?")} t/m ${esc(w.end || "?")}`);
-        if (w.detour) rows.push(`<em>${esc(w.detour)}</em>`);
         (w.lines || []).forEach((ln) => {
           L.polyline(ln, { color: "#f59e0b", weight: 7, opacity: 0.85, dashArray: "8 6" }).addTo(layers);
         });
-        L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(rows.join("<br>")).addTo(layers);
+        L.marker([w.lat, w.lon], { icon: worksIcon }).bindPopup(Overview.worksPopup(w)).addTo(layers);
       });
 
       Legality.draw(r, layers);
@@ -148,6 +143,7 @@
         `<small>${r.stats.total_distance_km.toFixed(1)} km` +
         (r.water_checked ? ` · waterpunten via ${esc(r.source)}` : "") + `</small>` +
         Checks.cards(r) +
+        Overview.html(r) +
         Weather.panel(r) +
         `<span class="dl">` +
         `<a href="/api/download/${item.original_job_id}?name=${encodeURIComponent(item.original_filename)}" download>origineel</a>` +
@@ -162,6 +158,7 @@
     el("results").hidden = false;
   }
 
+  Overview.bind(el("result-list"), map);
   Checks.init(el("process-btn"));
 
   el("refresh-routes").addEventListener("click", () => loadRoutes(true));

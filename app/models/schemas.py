@@ -73,6 +73,12 @@ class RoadWork:
     # Het afgesloten stuk zelf als een of meer lijnen [[lat, lon], ...]. Veel
     # nauwkeuriger dan het losse punt, dat vaak bij een omleidingsbord staat.
     lines: list[list[list[float]]] = field(default_factory=list)
+    # closed = voor fietsers afgesloten, hinder = omleiding/hinder voor fietsers,
+    # possible = alle verkeer afgesloten (fietsers mogelijk geraakt)
+    impact: str = "hinder"
+    severity: str | None = None
+    # Echte werkperiodes [[van, tot], ...]; start/end is het ruime venster
+    periods: list[list[str]] = field(default_factory=list)
     # Ingevuld tijdens routeberekening:
     distance_to_route_m: float = 0.0
     along_route_km: float = 0.0
@@ -87,6 +93,8 @@ class RoadWorkOut(BaseModel):
     authority: str | None = None
     detour: str | None = None
     lines: list[list[list[float]]] = []
+    impact: str = "hinder"
+    severity: str | None = None
     distance_to_route_m: float
     along_route_km: float
 
@@ -180,6 +188,8 @@ class ProcessResult(BaseModel):
     water_checked: bool = True
     stats: RouteStats
     route: list[list[float]]
+    # Hoogteprofiel [[km, hoogte m], ...]; leeg zonder hoogtegegevens
+    profile: list[list[float]] = []
     water_points: list[WaterPointOut]
     bounds: list[list[float]]
     # Alleen gevuld als er op wegwerkzaamheden is gecontroleerd

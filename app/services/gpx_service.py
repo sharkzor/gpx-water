@@ -11,6 +11,7 @@ import gpxpy.gpx
 
 from app.config import get_settings
 from app.models.schemas import RoadWork, RoutePoint, WaterPoint
+from app.services.roadworks_nl import IMPACT_LABEL
 
 if TYPE_CHECKING:
     from app.services.legality import Segment
@@ -128,6 +129,8 @@ def _describe_road_work(work: RoadWork) -> str:
     parts: list[str] = []
     if work.cause:
         parts.append(work.cause)
+    if work.impact in IMPACT_LABEL:
+        parts.append(IMPACT_LABEL[work.impact])
     if work.authority:
         parts.append(work.authority)
     if work.start or work.end:
